@@ -1459,10 +1459,10 @@ const CmSkuDetail: React.FC = () => {
   };
 
   /**
-   * searchSkuReference Function (CONSOLIDATED)
+   * searchSkuReference Function (NEW API)
    * Searches for external SKU references when user types in the Reference SKU field
    * This function is called when SKU Type is set to 'external'
-   * Uses consolidated API: GET /cm-dashboard/:cmCode with search parameter
+   * Uses new API: POST /sku-component-mapping
    * 
    * @param searchTerm - The search term entered by the user
    */
@@ -1477,92 +1477,133 @@ const CmSkuDetail: React.FC = () => {
 
     setSkuSearchLoading(true);  // Show loading state
     try {
-      // Use consolidated API first
-      const params = new URLSearchParams({
-        include: 'references',
-        search: searchTerm
+      // Use new API: POST /sku-component-mapping
+      const result = await apiPost('/sku-component-mapping', {
+        cm_code: cmCode || '',
+        sku_code: searchTerm
       });
       
-      const result: DashboardResponse = await apiGet(`/cm-dashboard/${cmCode}?${params}`);
-      
-      if (result.success && result.data && result.data.references) {
-        console.log('SKU reference search results from consolidated API:', result.data.references.length);
+      if (result.success && result.data && result.data.component_details) {
+        console.log('SKU reference search results from new API:', result.data.component_details.length);
         
-        // Map the API response to a more usable format
-        // This handles the nested structure with sku_info and components
-        const mappedResults = result.data.references.map((item: any) => {
-          const skuInfo = item.sku_info || item;           // Main SKU information
-          const components = item.components || [];  // Associated components
-          
-          // Extract unique SKU codes from components for display
-          const componentSkuCodes = components.map((comp: any) => comp.sku_code).filter((code: string) => code);
-          const uniqueSkuCodes = Array.from(new Set(componentSkuCodes.flatMap((code: string) => code.split(','))));
+        // Map the new API response to the existing format
+        const mappedResults = result.data.component_details.map((component: any) => {
+          // Create a sku_info structure for compatibility
+          const skuInfo = {
+            sku_code: component.sku_code,
+            period: component.periods,
+            sku_reference: component.sku_code
+          };
           
           return {
             ...skuInfo,
-            period_name: getPeriodTextFromId(skuInfo.period) || `Period ${skuInfo.period}`,  // Convert period ID to name
-            display_text: `${skuInfo.sku_code} (${getPeriodTextFromId(skuInfo.period) || `Period ${skuInfo.period}`})`,  // User-friendly display text
-            components_count: components.length,     // Number of components
-            total_components: result.data.total_components || 0,  // Total components from API
-            total_skus: result.data.total_skus || 0,     // Total SKUs from API
-            components: components,                  // Store components for later use
-            component_sku_codes: uniqueSkuCodes     // Store unique component SKU codes
+            period_name: getPeriodTextFromId(component.periods) || `Period ${component.periods}`,
+            display_text: `${component.sku_code} (${getPeriodTextFromId(component.periods) || `Period ${component.periods}`})`,
+            components_count: result.data.component_details.length,
+            total_components: result.summary?.component_details_count || 0,
+            total_skus: result.summary?.mapping_records_count || 0,
+            components: [component], // Wrap component in array for compatibility
+            component_sku_codes: [component.sku_code]
           };
         });
         
-        setSkuSearchResults(mappedResults);         // Update search results
-        setShowSkuSearchResults(true);              // Show dropdown
+        setSkuSearchResults(mappedResults);
+        setShowSkuSearchResults(true);
       } else {
-        throw new Error('No SKU reference search results found in consolidated API');
-      }
-    } catch (error) {
-      console.error('Error searching SKU references from consolidated API, falling back to original:', error);
-      
-      // Fallback to original API
-      try {
-      const response = await apiGet(`/skureference/${encodeURIComponent(searchTerm)}`);
-      const result = await response.json();
-      
-      if (result.success && result.data) {
-        // Map the API response to a more usable format
-        // This handles the nested structure with sku_info and components
-        const mappedResults = result.data.map((item: any) => {
-          const skuInfo = item.sku_info;           // Main SKU information
-          const components = item.components || [];  // Associated components
-          
-          // Extract unique SKU codes from components for display
-          const componentSkuCodes = components.map((comp: any) => comp.sku_code).filter((code: string) => code);
-          const uniqueSkuCodes = Array.from(new Set(componentSkuCodes.flatMap((code: string) => code.split(','))));
-          
-          return {
-            ...skuInfo,
-            period_name: getPeriodTextFromId(skuInfo.period) || `Period ${skuInfo.period}`,  // Convert period ID to name
-            display_text: `${skuInfo.sku_code} (${getPeriodTextFromId(skuInfo.period) || `Period ${skuInfo.period}`})`,  // User-friendly display text
-            components_count: components.length,     // Number of components
-            total_components: result.total_components || 0,  // Total components from API
-            total_skus: result.total_skus || 0,     // Total SKUs from API
-            components: components,                  // Store components for later use
-            component_sku_codes: uniqueSkuCodes     // Store unique component SKU codes
-          };
-        });
-        
-        setSkuSearchResults(mappedResults);         // Update search results
-        setShowSkuSearchResults(true);              // Show dropdown
-      } else {
-        // Clear results if API returns no data
+        // No data found
         setSkuSearchResults([]);
         setShowSkuSearchResults(false);
         setShowComponentTable(false);
+        console.log('No SKU reference search results found in new API');
       }
-      } catch (fallbackError) {
-        // Handle fallback API errors
-        console.error('Error searching SKU reference:', fallbackError);
+    } catch (error) {
+      console.error('Error searching SKU references from new API:', error);
       setSkuSearchResults([]);
       setShowSkuSearchResults(false);
       setShowComponentTable(false);
-      }
     } finally {
       setSkuSearchLoading(false);  // Hide loading state
+    }
+  };
+
+  // NEW FUNCTION: Fetch component details using new API
+  const fetchComponentDetailsFromNewAPI = async (cmCode: string, skuCode: string) => {
+    try {
+      setSkuSearchLoading(true);
+      
+      const result = await apiPost('/sku-component-mapping', {
+        cm_code: cmCode,
+        sku_code: skuCode
+      });
+      
+      if (result.success && result.data && result.data.component_details) {
+        console.log('Component details loaded from new API:', result.data.component_details.length);
+        
+        // Map the new API response to existing structure for compatibility
+        const mappedComponents = result.data.component_details.map((component: any) => ({
+          ...component,
+          // Ensure all required fields are present and properly mapped
+          component_code: component.component_code,
+          component_description: component.component_description,
+          formulation_reference: component.formulation_reference,
+          material_type_id: component.material_type_id,
+          components_reference: component.components_reference,
+          component_valid_from: component.component_valid_from,
+          component_valid_to: component.component_valid_to,
+          component_material_group: component.component_material_group,
+          component_quantity: component.component_quantity,
+          component_uom_id: component.component_uom_id,
+          component_base_quantity: component.component_base_quantity,
+          component_base_uom_id: component.component_base_uom_id,
+          percent_w_w: component.percent_w_w,
+          evidence: component.evidence,
+          component_packaging_type_id: component.component_packaging_type_id,
+          component_packaging_material: component.component_packaging_material,
+          component_unit_weight: component.component_unit_weight,
+          weight_unit_measure_id: component.weight_unit_measure_id,
+          percent_mechanical_pcr_content: component.percent_mechanical_pcr_content,
+          percent_mechanical_pir_content: component.percent_mechanical_pir_content,
+          percent_chemical_recycled_content: component.percent_chemical_recycled_content,
+          percent_bio_sourced: component.percent_bio_sourced,
+          material_structure_multimaterials: component.material_structure_multimaterials,
+          component_packaging_color_opacity: component.component_packaging_color_opacity,
+          component_packaging_level_id: component.component_packaging_level_id,
+          component_dimensions: component.component_dimensions,
+          packaging_specification_evidence: component.packaging_specification_evidence,
+          evidence_of_recycled_or_bio_source: component.evidence_of_recycled_or_bio_source,
+          cm_code: component.cm_code,
+          periods: component.periods
+        }));
+        
+        setSelectedSkuComponents(mappedComponents);
+        setComponentsToSave(mappedComponents);
+        
+        // Auto-select all components by default
+        const allComponentIds = mappedComponents.map((component: any) => component.id);
+        setSelectedComponentIds(allComponentIds);
+        
+        // Clear any previous errors
+        setAddSkuErrors(prev => ({ ...prev, referenceSku: '' }));
+        
+      } else {
+        // No data found
+        setSelectedSkuComponents([]);
+        setComponentsToSave([]);
+        setSelectedComponentIds([]);
+        setShowComponentTable(false);
+        // Show "No data found" message
+        setAddSkuErrors(prev => ({ ...prev, referenceSku: 'No data found' }));
+      }
+      
+    } catch (error) {
+      console.error('Error fetching component details from new API:', error);
+      setSelectedSkuComponents([]);
+      setComponentsToSave([]);
+      setSelectedComponentIds([]);
+      setShowComponentTable(false);
+      setAddSkuErrors(prev => ({ ...prev, referenceSku: 'Error fetching data' }));
+    } finally {
+      setSkuSearchLoading(false);
     }
   };
 
@@ -1711,6 +1752,10 @@ const CmSkuDetail: React.FC = () => {
       }
       if (!addSkuReference.trim()) {
         errors.referenceSku = 'Reference SKU is required for External SKU type';
+      }
+      // Additional validation: ensure components are loaded
+      if (selectedSkuComponents.length === 0) {
+        errors.referenceSku = 'No components found for the selected Reference SKU';
       }
     }
     
@@ -5490,6 +5535,8 @@ const CmSkuDetail: React.FC = () => {
                                     // Reset Reference SKU when 3PM changes
                                     setAddSkuReference('');
                                     setReferenceSkuOptions([]);
+                                    setSelectedSkuComponents([]);
+                                    setShowComponentTable(false);
                                     
                                     // Fetch Reference SKU options when 3PM is selected
                                     if (selectedCmCode && addSkuPeriod) {
@@ -5569,10 +5616,15 @@ const CmSkuDetail: React.FC = () => {
                                       setAddSkuErrors(prev => ({ ...prev, referenceSku: 'Reference SKU can be the same as SKU Code' }));
                                     }
                                     
-                                    // Fetch component details when Reference SKU is selected
-                                    if (selectedValue) {
-                                      fetchComponentDetails(selectedValue);
+                                    // Fetch component details when Reference SKU is selected using new API
+                                    if (selectedValue && addSkuContractor) {
+                                      fetchComponentDetailsFromNewAPI(addSkuContractor, selectedValue);
                                       setShowComponentTable(true);
+                                    } else if (selectedValue && !addSkuContractor) {
+                                      // Show error if Reference SKU is selected but no 3PM is selected
+                                      setAddSkuErrors(prev => ({ ...prev, referenceSku: 'Please select 3PM first' }));
+                                      setShowComponentTable(false);
+                                      setSelectedSkuComponents([]);
                                     } else {
                                       setShowComponentTable(false);
                                       setSelectedSkuComponents([]);
@@ -5623,150 +5675,154 @@ const CmSkuDetail: React.FC = () => {
                         )}
                         
                         {/* Component Table for External SKU */}
-                        {addSkuType === 'external' && showComponentTable && selectedSkuComponents.length > 0 && (
+                        {addSkuType === 'external' && showComponentTable && (
                           <div className="col-md-12">
-                        <div style={{ 
-                          marginTop: '20px',
-                          border: '1px solid #ddd',
-                          borderRadius: '8px',
-                          overflow: 'hidden'
-                        }}>
-                          <div style={{
-                            backgroundColor: '#f8f9fa',
-                            padding: '12px 16px',
-                            borderBottom: '1px solid #ddd',
-                            fontWeight: '600',
-                            fontSize: '14px'
-                          }}>
-                            Components for SKU Reference: {addSkuReference}
+                            {skuSearchLoading ? (
+                              <div className="col-md-12 text-center" style={{ padding: '20px' }}>
+                                <div className="spinner-border text-primary" role="status">
+                                  <span className="visually-hidden">Loading components...</span>
+                                </div>
+                                <p style={{ marginTop: '10px', color: '#666' }}>Loading components...</p>
+                              </div>
+                            ) : selectedSkuComponents.length > 0 ? (
+                              <div className="col-md-12">
+                                <div style={{ 
+                                  marginTop: '20px',
+                                  border: '1px solid #ddd',
+                                  borderRadius: '8px',
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{
+                                    backgroundColor: '#f8f9fa',
+                                    padding: '12px 16px',
+                                    borderBottom: '1px solid #ddd',
+                                    fontWeight: '600',
+                                    fontSize: '14px'
+                                  }}>
+                                    Components for SKU Reference: {addSkuReference}
+                                  </div>
+                                  <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                    <table className="table table-striped table-hover" style={{ marginBottom: 0 }}>
+                                      <thead style={{ backgroundColor: '#f8f9fa' }}>
+                                        <tr>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Select</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Action</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Component Code</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Description</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Formulation Ref</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Material Type</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Components Ref</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Valid From</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Valid To</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Material Group</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Quantity</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>UOM ID</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Base Quantity</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Base UOM</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>% w/w</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Packaging Type</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Packaging Material</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Unit Weight</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Weight UOM</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>% PCR</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>% PIR</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>% Chemical</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>% Bio Sourced</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Material Structure</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Color/Opacity</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Packaging Level</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Dimensions</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Created Date</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>CM Code</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Periods</th>
+                                          <th style={{ padding: '8px', fontSize: '10px' }}>Active</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {selectedSkuComponents.map((component, index) => (
+                                          <tr key={index}>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px', textAlign: 'center' }}>
+                                              <input
+                                                type="checkbox"
+                                                checked={selectedComponentIds.includes(component.id)}
+                                                onChange={(e) => {
+                                                  if (e.target.checked) {
+                                                    setSelectedComponentIds([...selectedComponentIds, component.id]);
+                                                  } else {
+                                                    setSelectedComponentIds(selectedComponentIds.filter(id => id !== component.id));
+                                                  }
+                                                }}
+                                                style={{ cursor: 'pointer' }}
+                                              />
+                                            </td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px', textAlign: 'center' }}>
+                                              <button
+                                                type="button"
+                                                className="btn btn-sm"
+                                                style={{
+                                                  backgroundColor: '#dc3545',
+                                                  border: 'none',
+                                                  color: 'white',
+                                                  padding: '2px 6px',
+                                                  fontSize: '8px',
+                                                  borderRadius: '3px',
+                                                  cursor: 'pointer',
+                                                  display: 'inline-block'
+                                                }}
+                                                onClick={() => handleDeleteComponent(component.id)}
+                                                title="Delete Component"
+                                              >
+                                                <i className="ri-delete-bin-line" style={{ marginRight: '2px' }}></i>
+                                                Delete
+                                              </button>
+                                            </td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_code}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_description}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.formulation_reference || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.material_type_id || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.components_reference || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_valid_from ? new Date(component.component_valid_from).toLocaleDateString() : '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_valid_to ? new Date(component.component_valid_to).toLocaleDateString() : '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_material_group || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_quantity}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_uom_id}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_base_quantity || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_base_uom_id || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_w_w}%</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_packaging_type_id || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_packaging_material || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_unit_weight || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.weight_unit_measure_id || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_mechanical_pcr_content || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_mechanical_pir_content || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_chemical_recycled_content || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_bio_sourced || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.material_structure_multimaterials || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_packaging_color_opacity || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_packaging_level_id || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_dimensions || '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.created_date ? new Date(component.created_date).toLocaleDateString() : '-'}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.cm_code}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.periods}</td>
+                                            <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.is_active ? 'Yes' : 'No'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="col-md-12 text-center" style={{ padding: '20px' }}>
+                                <p style={{ color: '#666' }}>No components found for the selected Reference SKU</p>
+                              </div>
+                            )}
                           </div>
-                          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                            <table className="table table-striped table-hover" style={{ marginBottom: 0 }}>
-                                                              <thead style={{ backgroundColor: '#f8f9fa' }}>
-                                  <tr>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Select</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Action</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Component Code</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Description</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Formulation Ref</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Material Type</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Components Ref</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Valid From</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Valid To</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Material Group</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Quantity</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>UOM ID</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Base Quantity</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Base UOM</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>% w/w</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Packaging Type</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Packaging Material</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Unit Weight</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Weight UOM</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>% PCR</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>% PIR</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>% Chemical</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>% Bio Sourced</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Material Structure</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Color/Opacity</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Packaging Level</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Dimensions</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Created Date</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>CM Code</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Periods</th>
-                                    <th style={{ padding: '8px', fontSize: '10px' }}>Active</th>
-                                  </tr>
-                                </thead>
-                                                              <tbody>
-                                  {selectedSkuComponents.map((component, index) => (
-                                    <tr key={index}>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px', textAlign: 'center' }}>
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedComponentIds.includes(component.id)}
-                                          onChange={(e) => {
-                                            if (e.target.checked) {
-                                              setSelectedComponentIds([...selectedComponentIds, component.id]);
-                                            } else {
-                                              setSelectedComponentIds(selectedComponentIds.filter(id => id !== component.id));
-                                            }
-                                          }}
-                                          style={{ cursor: 'pointer' }}
-                                        />
-                                      </td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px', textAlign: 'center' }}>
-                                        <button
-                                          type="button"
-                                          className="btn btn-sm"
-                                          style={{
-                                            backgroundColor: '#dc3545',
-                                            border: 'none',
-                                            color: 'white',
-                                            padding: '2px 6px',
-                                            fontSize: '8px',
-                                            borderRadius: '3px',
-                                            cursor: 'pointer',
-                                            display: 'inline-block'
-                                          }}
-                                          onClick={() => handleDeleteComponent(component.id)}
-                                          title="Delete Component"
-                                        >
-                                          <i className="ri-delete-bin-line" style={{ marginRight: '2px' }}></i>
-                                          Delete
-                                        </button>
-                                      </td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_code}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_description}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.formulation_reference || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.material_type_id || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.components_reference || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_valid_from ? new Date(component.component_valid_from).toLocaleDateString() : '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_valid_to ? new Date(component.component_valid_to).toLocaleDateString() : '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_material_group || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_quantity}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_uom_id}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_base_quantity || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_base_uom_id || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_w_w}%</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_packaging_type_id || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_packaging_material || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_unit_weight || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.weight_unit_measure_id || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_mechanical_pcr_content || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_mechanical_pir_content || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_chemical_recycled_content || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.percent_bio_sourced || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.material_structure_multimaterials || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_packaging_color_opacity || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_packaging_level_id || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_dimensions || '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.created_date ? new Date(component.created_date).toLocaleDateString() : '-'}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.cm_code}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.periods}</td>
-                                      <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.is_active ? 'Yes' : 'No'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                        )}
                       </>
                     )}
                     
-                    {/* Purchased Quantity text field - Hidden for now, may be used later */}
-                    {/* <div className="col-md-6">
-                      <label>Purchased Quantity <span style={{ color: 'red' }}>*</span></label>
-                      <input
-                        type="text"
-                        className={`form-control${addSkuErrors.qty ? ' is-invalid' : ''}`}
-                        value={addSkuQty}
-                        onChange={e => setAddSkuQty(e.target.value)}
-                        disabled={addSkuLoading}
-                      />
-                      {addSkuErrors.qty && <div className="invalid-feedback" style={{ color: 'red' }}>{addSkuErrors.qty}</div>}
-                    </div> */}
+                   
                   </div>
                   {addSkuErrors.server && <div style={{ color: 'red', marginTop: 16, fontWeight: 600 }}>{addSkuErrors.server}</div>}
                   {addSkuSuccess && <div style={{ color: '#30ea03', marginTop: 16, fontWeight: 600 }}>{addSkuSuccess}</div>}
