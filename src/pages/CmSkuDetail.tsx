@@ -8,6 +8,21 @@ import { Collapse } from 'react-collapse';
 import * as XLSX from 'xlsx';
 import { apiGet, apiPost, apiPut, apiPatch, apiPostFormData, apiPutFormData } from '../utils/api';
 
+// Add CSS for spinning loader
+const spinningStyle = {
+  animation: 'spin 1s linear infinite'
+};
+
+// Add keyframes for spinning animation
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(style);
+
 /**
  * SKU Data Interface
  * Defines the structure of SKU (Stock Keeping Unit) data received from the API
@@ -198,6 +213,7 @@ const CmSkuDetail: React.FC = () => {
   const [showCopyDataModal, setShowCopyDataModal] = useState(false);        // Copy data modal visibility
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);      // Selected file for upload
   const [uploadLoading, setUploadLoading] = useState(false);                // Upload progress state
+  const [exportLoading, setExportLoading] = useState(false);                // Export to Excel loading state
   const [uploadError, setUploadError] = useState('');                       // Upload error message
   const [uploadSuccess, setUploadSuccess] = useState('');                   // Upload success message
   const [copyFromPeriod, setCopyFromPeriod] = useState<string>('');        // Source period for copy
@@ -3037,119 +3053,136 @@ const CmSkuDetail: React.FC = () => {
   };
 
   // Export to Excel handler
-  const handleExportToExcel = () => {
-    // Prepare data for export with all SKU and component details
-    const exportData: any[] = [];
-    
-    filteredSkuData.forEach(sku => {
-      const components = componentDetails[sku.sku_code] || [];
+  const handleExportToExcel = async () => {
+    try {
+      setExportLoading(true);
+      console.log('🔄 Starting Excel export...');
       
-      if (components.length === 0) {
-        // If no components, still export SKU data
-        exportData.push({
-          // SKU Information
-          'SKU Code': sku.sku_code,
-          'SKU Description': sku.sku_description,
-          'Reference SKU': sku.sku_reference,
-                      'Period': sku.period,
-            'Purchased Quantity': sku.purchased_quantity,
-            'Dual Source': sku.dual_source_sku,
-            'Formulation Reference': sku.formulation_reference,
-          'SKU Created By': sku.created_by,
-          'SKU Created Date': sku.created_date,
-          
-          // Component Information (empty for SKUs without components)
-          'Component Type': '',
-          'Component Code': '',
-          'Component Description': '',
-          'Component Validity From': '',
-          'Component Validity To': '',
-          'Component Category': '',
-          'Component Quantity': '',
-          'Component Unit of Measure': '',
-          'Component Base Quantity': '',
-          'Component Base Unit of Measure': '',
-          'Component %w/w': '',
-          'Component Packaging Type': '',
-          'Component Packaging Material': '',
-          'Component Unit Weight': '',
-          'Component Weight Unit of Measure': '',
-          'Component % Post Consumer': '',
-          'Component % Post Industrial': '',
-          'Component % Chemical': '',
-          'Component % Bio Sourced': '',
-          'Component Material Structure': '',
-          'Component Packaging Colour': '',
-          'Component Packaging Level': '',
-          'Component Dimensions': ''
-        });
-      } else {
-        // For each component, create a separate row with SKU and component data
-        components.forEach(component => {
-          exportData.push({
-            // SKU Information
-            'SKU Code': sku.sku_code,
-            'SKU Description': sku.sku_description,
-            'Reference SKU': sku.sku_reference,
-            'Period': sku.period,
-            'Purchased Quantity': sku.purchased_quantity,
-            'Dual Source': sku.dual_source_sku,
-            'Formulation Reference': sku.formulation_reference,
-            'SKU Created By': sku.created_by,
-            'SKU Created Date': sku.created_date,
-            
-            // Component Information
-            'Component Type': component.material_type_display || component.material_type_id || '',
-            'Component Code': component.component_code || '',
-            'Component Description': component.component_description || '',
-            'Component Validity From': component.component_valid_from ? new Date(component.component_valid_from).toLocaleDateString() : '',
-            'Component Validity To': component.component_valid_to ? new Date(component.component_valid_to).toLocaleDateString() : '',
-            'Component Category': component.component_material_group || '',
-            'Component Quantity': component.component_quantity || '',
-            'Component Unit of Measure': component.component_uom_display || component.component_uom_id || '',
-            'Component Base Quantity': component.component_base_quantity || '',
-            'Component Base Unit of Measure': component.component_base_uom_display || component.component_base_uom_id || '',
-            'Component %w/w': component.percent_w_w || '',
-            'Component Packaging Type': component.component_packaging_type_display || component.component_packaging_type_id || '',
-            'Component Packaging Material': component.component_packaging_material || '',
-            'Component Unit Weight': component.component_unit_weight || '',
-            'Component Weight Unit of Measure': component.weight_unit_measure_display || component.weight_unit_measure_id || '',
-            'Component % Post Consumer': component.percent_mechanical_pcr_content || '',
-            'Component % Post Industrial': component.percent_mechanical_pir_content || '',
-            'Component % Chemical': component.percent_chemical_recycled_content || '',
-            'Component % Bio Sourced': component.percent_bio_sourced || '',
-            'Component Material Structure': component.material_structure_multimaterials || '',
-            'Component Packaging Colour': component.component_packaging_color_opacity || '',
-            'Component Packaging Level': component.component_packaging_level_display || component.component_packaging_level_id || '',
-            'Component Dimensions': component.component_dimensions || ''
-          });
-        });
-
+      // Call the export-excel API
+      const response = await apiPost('/export-excel', {
+        cm_code: cmCode
+      });
+      
+      if (!response.success) {
+        console.error('❌ Export API failed:', response.message);
+        alert('Export failed: ' + (response.message || 'Unknown error'));
+        return;
       }
-    });
-    
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    
-    // Style the headers with bold and green color
-    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-    for (let col = range.s.c; col <= range.e.c; col++) {
-      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
-      if (worksheet[cellAddress]) {
-        worksheet[cellAddress].s = {
-          font: {
-            bold: true,
-            color: { rgb: '30EA03' } // Green color
-          },
-          fill: {
-            fgColor: { rgb: 'E8F5E8' } // Light green background
-          }
-        };
+      
+      console.log('✅ Export API response:', response);
+      
+      // Extract component data from API response
+      const componentData = response.data || [];
+      const summary = response.summary || {};
+      
+      if (componentData.length === 0) {
+        alert('No component data found to export');
+        return;
       }
+      
+      // Prepare data for Excel export
+      const exportData = componentData.map((component: any) => ({
+        'Mapping ID': component.mapping_id || '',
+        'CM Code': component.cm_code || '',
+        'SKU Code': component.sku_code || '',
+        'Component Code': component.component_code || '',
+        'Mapping Version': component.mapping_version || '',
+        'Packaging Type ID': component.mapping_packaging_type_id || '',
+        'Period ID': component.period_id || '',
+        'Mapping Valid From': component.mapping_valid_from ? new Date(component.mapping_valid_from).toLocaleDateString() : '',
+        'Mapping Valid To': component.mapping_valid_to ? new Date(component.mapping_valid_to).toLocaleDateString() : '',
+        'Mapping Active': component.mapping_is_active ? 'Yes' : 'No',
+        'Mapping Created By': component.mapping_created_by || '',
+        'Mapping Created At': component.mapping_created_at ? new Date(component.mapping_created_at).toLocaleDateString() : '',
+        'Mapping Updated At': component.mapping_updated_at ? new Date(component.mapping_updated_at).toLocaleDateString() : '',
+        'Component ID': component.component_id || '',
+        'Formulation Reference': component.formulation_reference || '',
+        'Material Type ID': component.material_type_id || '',
+        'Components Reference': component.components_reference || '',
+        'Component Description': component.component_description || '',
+        'Component Valid From': component.component_valid_from ? new Date(component.component_valid_from).toLocaleDateString() : '',
+        'Component Valid To': component.component_valid_to ? new Date(component.component_valid_to).toLocaleDateString() : '',
+        'Material Group': component.component_material_group || '',
+        'Component Quantity': component.component_quantity || '',
+        'Component UOM ID': component.component_uom_id || '',
+        'Base Quantity': component.component_base_quantity || '',
+        'Base UOM ID': component.component_base_uom_id || '',
+        'Percent w/w': component.percent_w_w || '',
+        'Evidence': component.evidence || '',
+        'Component Packaging Type ID': component.component_packaging_type_id || '',
+        'Packaging Material': component.component_packaging_material || '',
+        'Helper Column': component.helper_column || '',
+        'Unit Weight': component.component_unit_weight || '',
+        'Weight Unit Measure': component.weight_unit_measure_id || '',
+        'PCR Content %': component.percent_mechanical_pcr_content || '',
+        'PIR Content %': component.percent_mechanical_pir_content || '',
+        'Chemical Recycled %': component.percent_chemical_recycled_content || '',
+        'Bio Sourced %': component.percent_bio_sourced || '',
+        'Material Structure': component.material_structure_multimaterials || '',
+        'Packaging Color': component.component_packaging_color_opacity || '',
+        'Packaging Level': component.component_packaging_level_id || '',
+        'Dimensions': component.component_dimensions || '',
+        'Packaging Spec Evidence': component.packaging_specification_evidence || '',
+        'Recycled Evidence': component.evidence_of_recycled_or_bio_source || '',
+        'Last Update Date': component.last_update_date ? new Date(component.last_update_date).toLocaleDateString() : '',
+        'Category Entry ID': component.category_entry_id ? new Date(component.category_entry_id).toLocaleDateString() : '',
+        'Data Verification ID': component.data_verification_entry_id || '',
+        'User ID': component.user_id || '',
+        'Signed Off By': component.signed_off_by || '',
+        'Signed Off Date': component.signed_off_date || '',
+        'Mandatory Fields Status': component.mandatory_fields_completion_status ? new Date(component.mandatory_fields_completion_status).toLocaleDateString() : '',
+        'Evidence Provided': component.evidence_provided || '',
+        'Document Status': component.document_status || '',
+        'Component Active': component.component_is_active ? 'Yes' : 'No',
+        'Component Created By': component.component_created_by || '',
+        'Component Created Date': component.component_created_date ? new Date(component.component_created_date).toLocaleDateString() : '',
+        'Year': component.year || '',
+        'Component Unit Weight ID': component.component_unit_weight_id || '',
+        'Periods': component.periods || ''
+      }));
+      
+      // Create worksheet
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      
+      // Style the headers with bold and green color
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+      for (let col = range.s.c; col <= range.e.c; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+        if (worksheet[cellAddress]) {
+          worksheet[cellAddress].s = {
+            font: {
+              bold: true,
+              color: { rgb: '30EA03' } // Green color
+            },
+            fill: {
+              fgColor: { rgb: 'E8F5E8' } // Light green background
+            }
+          };
+        }
+      }
+      
+      // Create workbook and add worksheet
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Components Data');
+      
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `${cmCode}_components_export_${timestamp}.xlsx`;
+      
+      // Download the file
+      XLSX.writeFile(workbook, filename);
+      
+      console.log(`✅ Excel export completed: ${exportData.length} rows exported to ${filename}`);
+      
+      // Show success message
+      alert(`Successfully exported ${exportData.length} component records to ${filename}`);
+      
+    } catch (error) {
+      console.error('❌ Export to Excel failed:', error);
+      alert('Export failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setExportLoading(false);
     }
-    
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'SKUs and Components');
-    XLSX.writeFile(workbook, '3pm-detail-skus-components.xlsx');
   };
 
   // Copy Data modal handlers
@@ -3837,8 +3870,13 @@ const CmSkuDetail: React.FC = () => {
                       className="btnCommon btnGreen filterButtons"
                       style={{ minWidth: 110, fontWeight: 600, marginRight: 0, marginTop: 0, fontSize: '13px', padding: '8px 12px' }}
                       onClick={handleExportToExcel}
+                      disabled={exportLoading}
                     >
-                     <span>Export to Excel</span> <i className="ri-file-excel-2-line"></i>
+                     <span>{exportLoading ? 'Exporting...' : 'Export to Excel'}</span> 
+                     <i 
+                       className={exportLoading ? 'ri-loader-4-line' : 'ri-file-excel-2-line'} 
+                       style={exportLoading ? spinningStyle : {}}
+                     ></i>
                     </button>
                   </li>
                   <li style={{ display: 'flex', alignItems: 'center' }}>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { apiGet } from '../utils/api';
+import { apiGet, apiPost } from '../utils/api';
 import * as XLSX from 'xlsx';
 
 // Add CSS for spinning loader
