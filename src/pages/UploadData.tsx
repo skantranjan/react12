@@ -2,6 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { apiGet } from '../utils/api';
+import * as XLSX from 'xlsx';
+
+// Add CSS for spinning loader
+const spinningStyle = {
+  animation: 'spin 1s linear infinite'
+};
+
+// Add keyframes for spinning animation
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(style);
 
 const UploadData: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -12,9 +28,138 @@ const UploadData: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Excel file handling state
+  const [excelData, setExcelData] = useState<any[]>([]);
+  const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  
   // Get 3PM Code and Description from URL parameters
   const cmCode = searchParams.get('cmCode') || '';
   const cmDescription = searchParams.get('cmDescription') || '';
+
+  // Excel file reading function
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', // .xls
+      'text/csv' // .csv
+    ];
+
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/i)) {
+      setError('Please select a valid Excel file (.xlsx, .xls) or CSV file (.csv)');
+      return;
+    }
+
+    setSelectedFile(file);
+    setFileLoading(true);
+    setError(null);
+    setUploadSuccess(null);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        
+        // Convert to JSON
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (jsonData.length === 0) {
+          setError('The Excel file is empty or contains no data');
+          setFileLoading(false);
+          return;
+        }
+
+        // Extract headers (first row)
+        const headers = jsonData[0] as string[];
+        setExcelHeaders(headers);
+
+        // Extract data (remaining rows)
+        const dataRows = jsonData.slice(1).map((row: any, index: number) => {
+          const rowData: any = {};
+          headers.forEach((header, colIndex) => {
+            rowData[header] = row[colIndex] || '';
+            rowData['_rowIndex'] = index + 1; // Add row index for reference
+          });
+          return rowData;
+        });
+
+        setExcelData(dataRows);
+        setFileLoading(false);
+        console.log('Excel file loaded successfully:', { headers, dataRows: dataRows.length });
+      } catch (err) {
+        console.error('Error reading Excel file:', err);
+        setError('Error reading the Excel file. Please ensure it\'s a valid Excel file.');
+        setFileLoading(false);
+      }
+    };
+
+    reader.onerror = () => {
+      setError('Error reading the file');
+      setFileLoading(false);
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Upload data function
+  const handleUploadData = async () => {
+    if (!excelData.length || !selectedFile) {
+      setError('Please select and read an Excel file first');
+      return;
+    }
+
+    if (!selectedFromYear || !selectedToYear) {
+      setError('Please select both From and To periods');
+      return;
+    }
+
+    setUploadLoading(true);
+    setError(null);
+    setUploadSuccess(null);
+
+    try {
+      // Prepare data for upload
+      const uploadData = {
+        cm_code: cmCode,
+        cm_description: cmDescription,
+        from_period: selectedFromYear,
+        to_period: selectedToYear,
+        file_name: selectedFile.name,
+        total_rows: excelData.length,
+        data: excelData
+      };
+
+      console.log('Uploading data:', uploadData);
+
+      // TODO: Replace with actual API endpoint
+      // const response = await apiPost('/upload-excel-data', uploadData);
+      
+      // For now, simulate successful upload
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      setUploadSuccess(`Successfully uploaded ${excelData.length} rows of data!`);
+      setExcelData([]);
+      setExcelHeaders([]);
+      setSelectedFile(null);
+      
+      console.log('Data uploaded successfully');
+    } catch (err) {
+      console.error('Error uploading data:', err);
+      setError('Error uploading data. Please try again.');
+    } finally {
+      setUploadLoading(false);
+    }
+  };
 
   // Fetch years from API
   useEffect(() => {
@@ -385,6 +530,7 @@ const UploadData: React.FC = () => {
                      <input
                        type="file"
                        accept=".xlsx,.xls,.csv"
+                       onChange={handleFileUpload}
                        style={{
                          width: '100%',
                          padding: '8px 12px',
@@ -395,12 +541,55 @@ const UploadData: React.FC = () => {
                          outline: 'none'
                        }}
                      />
+                     {selectedFile && (
+                       <div style={{ 
+                         marginTop: '8px', 
+                         fontSize: '12px', 
+                         color: '#28a745',
+                         display: 'flex',
+                         alignItems: 'center',
+                         gap: '4px'
+                       }}>
+                         <i className="ri-check-line"></i>
+                         {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
+                         <button
+                           type="button"
+                           onClick={() => {
+                             setSelectedFile(null);
+                             setExcelData([]);
+                             setExcelHeaders([]);
+                             setError(null);
+                             setUploadSuccess(null);
+                           }}
+                           style={{
+                             marginLeft: '8px',
+                             background: 'none',
+                             border: 'none',
+                             color: '#dc3545',
+                             cursor: 'pointer',
+                             fontSize: '12px',
+                             padding: '2px 6px',
+                             borderRadius: '3px'
+                           }}
+                           title="Clear file"
+                         >
+                           <i className="ri-close-line"></i>
+                         </button>
+                       </div>
+                     )}
                    </div>
                  </li>
                  <li>
-                                       <button className="btnCommon btnGreen filterButtons" onClick={handleApplyFilters} disabled={loading}>
-                      <span>Upload</span>
-                      <i className="ri-upload-line"></i>
+                                       <button 
+                                         className="btnCommon btnGreen filterButtons" 
+                                         onClick={handleUploadData} 
+                                         disabled={!excelData.length || !selectedFile || uploadLoading}
+                                       >
+                      <span>{uploadLoading ? 'Uploading...' : 'Upload'}</span>
+                      <i 
+                        className={uploadLoading ? 'ri-loader-4-line' : 'ri-upload-line'} 
+                        style={uploadLoading ? spinningStyle : {}}
+                      ></i>
                     </button>
                  </li>
               </ul>
@@ -408,9 +597,161 @@ const UploadData: React.FC = () => {
           </div>
         </div>
 
+        {/* Excel Data Preview Table */}
+        {excelData.length > 0 && (
+          <div style={{ 
+            marginTop: '30px',
+            background: 'white',
+            borderRadius: '8px',
+            border: '1px solid #e9ecef',
+            overflow: 'hidden',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{
+              backgroundColor: '#000',
+              color: 'white',
+              padding: '15px 20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <h5 style={{ margin: 0, fontSize: '18px' }}>
+                <i className="ri-file-excel-line" style={{ marginRight: '8px' }}></i>
+                Excel Data Preview
+              </h5>
+              <div style={{ fontSize: '14px', color: '#ccc' }}>
+                {excelData.length} rows loaded from {selectedFile?.name}
+              </div>
+            </div>
+            
+            <div style={{ maxHeight: '500px', overflowX: 'auto', overflowY: 'auto' }}>
+              <table style={{ 
+                width: '100%', 
+                borderCollapse: 'collapse',
+                backgroundColor: '#fff'
+              }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f8f9fa' }}>
+                    <th style={{ 
+                      padding: '12px 16px', 
+                      textAlign: 'left', 
+                      borderBottom: '1px solid #e9ecef', 
+                      fontWeight: '600',
+                      fontSize: '12px',
+                      minWidth: '60px'
+                    }}>
+                      Row
+                    </th>
+                    {excelHeaders.map((header, index) => (
+                      <th key={index} style={{ 
+                        padding: '12px 16px', 
+                        textAlign: 'left', 
+                        borderBottom: '1px solid #e9ecef', 
+                        fontWeight: '600',
+                        fontSize: '12px',
+                        minWidth: '120px'
+                      }}>
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {excelData.slice(0, 100).map((row, rowIndex) => (
+                    <tr key={rowIndex} style={{ 
+                      backgroundColor: rowIndex % 2 === 0 ? '#fff' : '#f8f9fa',
+                      borderBottom: '1px solid #e9ecef'
+                    }}>
+                      <td style={{ 
+                        padding: '8px 16px', 
+                        fontSize: '11px', 
+                        color: '#666',
+                        fontWeight: '500',
+                        borderRight: '1px solid #e9ecef'
+                      }}>
+                        {row._rowIndex}
+                      </td>
+                      {excelHeaders.map((header, colIndex) => (
+                        <td key={colIndex} style={{ 
+                          padding: '8px 16px', 
+                          fontSize: '11px',
+                          borderRight: '1px solid #e9ecef'
+                        }}>
+                          {row[header] || '-'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              
+              {excelData.length > 100 && (
+                <div style={{ 
+                  padding: '15px 20px', 
+                  textAlign: 'center', 
+                  color: '#666',
+                  fontSize: '14px',
+                  borderTop: '1px solid #e9ecef',
+                  backgroundColor: '#f8f9fa'
+                }}>
+                  <i className="ri-information-line" style={{ marginRight: '8px' }}></i>
+                  Showing first 100 rows. Total rows: {excelData.length}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* File Loading Indicator */}
+        {fileLoading && (
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '40px', 
+            color: '#666',
+            marginTop: '20px'
+          }}>
+            <i className="ri-loader-4-line" style={{ fontSize: '24px', color: '#666', ...spinningStyle }}></i>
+            <p>Reading Excel file...</p>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <div style={{ 
+            background: '#f8d7da', 
+            color: '#721c24', 
+            padding: '15px 20px', 
+            borderRadius: '8px', 
+            marginTop: '20px',
+            border: '1px solid #f5c6cb',
+            display: 'flex',
+            alignItems: 'center'
+          }}>
+            <i className="ri-error-warning-line" style={{ marginRight: '8px', fontSize: '18px' }}></i>
+            {error}
+          </div>
+        )}
+
+        {/* Success Display */}
+        {uploadSuccess && (
+          <div style={{ 
+            background: '#d4edda', 
+            color: '#155724', 
+            padding: '15px 20px', 
+            borderRadius: '8px', 
+            marginTop: '20px',
+            border: '1px solid #c3e6cb',
+            display: 'flex',
+            alignItems: 'center'
+          }}>
+            <i className="ri-check-line" style={{ marginRight: '8px', fontSize: '18px' }}></i>
+            {uploadSuccess}
+          </div>
+        )}
+
         {loading && (
           <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-            <i className="ri-loader-4-line spinning" style={{ fontSize: '24px', color: '#666' }}></i>
+            <i className="ri-loader-4-line" style={{ fontSize: '24px', color: '#666', ...spinningStyle }}></i>
             <p>Loading periods...</p>
           </div>
         )}
