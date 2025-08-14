@@ -226,7 +226,7 @@ const CmSkuDetail: React.FC = () => {
   // ===== COMPONENT CONFIRMATION STATE =====
   // State for managing component status change confirmations
   const [showComponentConfirm, setShowComponentConfirm] = useState(false);   // Component confirmation modal
-  const [pendingComponentId, setPendingComponentId] = useState<number | null>(null);      // Component ID for status change
+  const [pendingComponentMappingId, setPendingComponentMappingId] = useState<number | null>(null);      // Component mapping ID for status change
   const [pendingComponentStatus, setPendingComponentStatus] = useState<boolean>(false);    // New component status
   const [pendingComponentSkuCode, setPendingComponentSkuCode] = useState<string>('');     // SKU code for component
 
@@ -1016,11 +1016,11 @@ const CmSkuDetail: React.FC = () => {
   };
 
   // Handler to show component confirmation modal
-  const handleComponentStatusClick = (componentId: number, currentStatus: boolean, skuCode: string) => {
-    console.log('🔍 handleComponentStatusClick called with:', { componentId, currentStatus, skuCode });
+  const handleComponentStatusClick = (mappingId: number, currentStatus: boolean, skuCode: string) => {
+    console.log('🔍 handleComponentStatusClick called with:', { mappingId, currentStatus, skuCode });
     console.log('🔄 Setting pending status to:', !currentStatus);
     
-    setPendingComponentId(componentId);
+    setPendingComponentMappingId(mappingId);
     setPendingComponentStatus(!currentStatus);
     setPendingComponentSkuCode(skuCode);
     setShowComponentConfirm(true);
@@ -1031,20 +1031,20 @@ const CmSkuDetail: React.FC = () => {
   // Handler for component confirmation
   const handleComponentConfirmStatusChange = async () => {
     console.log('🔍 handleComponentConfirmStatusChange called with:', {
-      pendingComponentId,
+      pendingComponentMappingId,
       pendingComponentStatus,
       pendingComponentSkuCode
     });
     
-    if (pendingComponentId !== null) {
+    if (pendingComponentMappingId !== null) {
       console.log('✅ Calling handleComponentStatusChange...');
-      await handleComponentStatusChange(pendingComponentId, pendingComponentStatus, pendingComponentSkuCode);
+      await handleComponentStatusChange(pendingComponentMappingId, pendingComponentStatus, pendingComponentSkuCode);
     } else {
-      console.warn('⚠️ pendingComponentId is null, skipping status change');
+      console.warn('⚠️ pendingComponentMappingId is null, skipping status change');
     }
     
     setShowComponentConfirm(false);
-    setPendingComponentId(null);
+    setPendingComponentMappingId(null);
     setPendingComponentSkuCode('');
     console.log('✅ Component confirmation modal closed');
   };
@@ -1052,7 +1052,7 @@ const CmSkuDetail: React.FC = () => {
   // Handler for component modal cancel
   const handleComponentCancelStatusChange = () => {
     setShowComponentConfirm(false);
-    setPendingComponentId(null);
+    setPendingComponentMappingId(null);
     setPendingComponentSkuCode('');
   };
 
@@ -1922,6 +1922,24 @@ const CmSkuDetail: React.FC = () => {
     try {
       console.log('componentsToSave before API call:', componentsToSave);
       console.log('componentsToSave length:', componentsToSave.length);
+      console.log('selectedComponentIds:', selectedComponentIds);
+      
+      // Filter components to only include checked/selected ones
+      const filteredComponents = componentsToSave.filter(component => 
+        selectedComponentIds.includes(component.id)
+      );
+      
+      console.log('Filtered components (only checked):', filteredComponents);
+      console.log('Filtered components length:', filteredComponents.length);
+      
+      // Validate that we have selected components
+      if (filteredComponents.length === 0) {
+        console.warn('⚠️ No components selected! All checkboxes are unchecked.');
+        setAddSkuErrors(prev => ({ ...prev, referenceSku: 'Please select at least one component to add' }));
+        setAddSkuLoading(false);
+        return;
+      }
+      
       // Only send skutype if checkbox is checked (user wants reference SKU)
       const skutypeParam = showSkuTypeSection ? addSkuType : '';
       const skutypeBody = showSkuTypeSection ? addSkuType : null;
@@ -1938,7 +1956,7 @@ const CmSkuDetail: React.FC = () => {
             skutype: skutypeBody,  // Only send if checkbox is checked
             bulk_expert: addSkuDropdownValue  // Add bulk_expert to sku_data as well
           },
-          components: componentsToSave.map(component => ({
+          components: filteredComponents.map(component => ({
             component_code: component.component_code,
             component_description: component.component_description,
             component_quantity: component.component_quantity,
@@ -1984,7 +2002,7 @@ const CmSkuDetail: React.FC = () => {
           skutype: skutypeBody,
           bulk_expert: addSkuDropdownValue
         },
-        components: componentsToSave.map(component => ({
+        components: filteredComponents.map(component => ({
           component_code: component.component_code,
           component_description: component.component_description,
           component_quantity: component.component_quantity,
@@ -2643,6 +2661,9 @@ const CmSkuDetail: React.FC = () => {
   // Add state for component details per SKU
   const [componentDetails, setComponentDetails] = useState<{ [skuCode: string]: any[] }>({});
   const [componentDetailsLoading, setComponentDetailsLoading] = useState<{ [skuCode: string]: boolean }>({});
+  
+  // Add state for material type selection per SKU
+  const [skuMaterialTypes, setSkuMaterialTypes] = useState<{ [skuCode: string]: string }>({});
 
 
 
@@ -2650,37 +2671,58 @@ const CmSkuDetail: React.FC = () => {
   const getFilteredComponents = (skuCode: string) => {
     const components = componentDetails[skuCode] || [];
     
-    if (selectedMaterialType === 'packaging') {
-      return components.filter(component => {
+    // Get the material type selection for this specific SKU
+    const skuMaterialType = skuMaterialTypes[skuCode] || 'packaging';
+    
+    console.log('🔍 Filtering components for SKU:', skuCode);
+    console.log('🔍 Total components:', components.length);
+    console.log('🔍 Selected material type:', skuMaterialType);
+    
+    let filteredComponents;
+    
+    if (skuMaterialType === 'packaging') {
+      filteredComponents = components.filter(component => {
         const materialTypeId = parseInt(component.material_type_id);
         return materialTypeId === 1;
       });
-    } else if (selectedMaterialType === 'raw_material') {
-      return components.filter(component => {
+      console.log('📦 Packaging components found:', filteredComponents.length);
+    } else if (skuMaterialType === 'raw_material') {
+      filteredComponents = components.filter(component => {
         const materialTypeId = parseInt(component.material_type_id);
         return materialTypeId === 2;
       });
+      console.log('🏗️ Raw material components found:', filteredComponents.length);
+    } else {
+      filteredComponents = components;
+      console.log('📋 All components shown:', filteredComponents.length);
     }
-    return components; // Show all if no specific filter
+    
+    return filteredComponents;
   };
 
-  // Function to fetch component details for a SKU using sku-component-mapping API
+  // Function to fetch component details for a SKU using getcomponentbyskureference API
   const fetchComponentDetails = async (skuCode: string) => {
+    console.log('🔍 fetchComponentDetails called with skuCode:', skuCode);
+    console.log('🔍 cmCode:', cmCode, 'addSkuContractor:', addSkuContractor);
+    
     setComponentDetailsLoading(prev => ({ ...prev, [skuCode]: true }));
     try {
-      // Use the sku-component-mapping API with POST request
+      // Use the getcomponentbyskureference API with POST request
       const requestBody = {
-        cm_code: cmCode || addSkuContractor, // Use selected 3PM or current cm_code
+        cm_code: cmCode || addSkuContractor,
         sku_code: skuCode
       };
+      console.log('🌐 API URL: POST /getcomponentbyskureference');
+      console.log('📤 Request Body:', requestBody);
       
-      const data = await apiPost('/sku-component-mapping', requestBody);
+      const data = await apiPost('/getcomponentbyskureference', requestBody);
+      console.log('📡 API Response:', data);
       
-      if (data.success && data.data && data.data.component_details) {
-        console.log('Component details loaded from sku-component-mapping API:', data.data.component_details.length);
+      if (data.success && data.data && data.data.length > 0) {
+        console.log('✅ Component details loaded from getcomponentbyskureference API:', data.data.length);
         
         // Map the component data to include display names
-        const mappedData = (data.data.component_details || []).map((component: any) => {
+        const mappedData = data.data.map((component: any) => {
           const mapped = {
             ...component,
             // Map IDs to display names
@@ -2696,6 +2738,12 @@ const CmSkuDetail: React.FC = () => {
         });
         
         setComponentDetails(prev => ({ ...prev, [skuCode]: mappedData }));
+        
+        // Set default material type to 'packaging' for this SKU if not already set
+        if (!skuMaterialTypes[skuCode]) {
+          setSkuMaterialTypes(prev => ({ ...prev, [skuCode]: 'packaging' }));
+        }
+        
         // Also update selectedSkuComponents for the table display
         setSelectedSkuComponents(mappedData);
         // Update editSelectedSkuComponents for Edit SKU modal
@@ -2707,7 +2755,7 @@ const CmSkuDetail: React.FC = () => {
         // Store components for API call
         setComponentsToSave(mappedData);
       } else {
-        console.log('No component details found in sku-component-mapping API');
+        console.log('No component details found in getcomponentbyskureference API');
         setComponentDetails(prev => ({ ...prev, [skuCode]: [] }));
         setSelectedSkuComponents([]);
         setEditSelectedSkuComponents([]);
@@ -2716,7 +2764,7 @@ const CmSkuDetail: React.FC = () => {
         setComponentsToSave([]);
       }
     } catch (err) {
-      console.error('Error fetching component details from sku-component-mapping API:', err);
+      console.error('Error fetching component details from getcomponentbyskureference API:', err);
       setComponentDetails(prev => ({ ...prev, [skuCode]: [] }));
       setSelectedSkuComponents([]);
       setEditSelectedSkuComponents([]);
@@ -3505,14 +3553,14 @@ const CmSkuDetail: React.FC = () => {
     }
   };
 
-  const handleComponentStatusChange = async (componentId: number, newStatus: boolean, skuCode?: string) => {
-    console.log('🔍 handleComponentStatusChange called with:', { componentId, newStatus, skuCode });
+  const handleComponentStatusChange = async (mappingId: number, newStatus: boolean, skuCode?: string) => {
+    console.log('🔍 handleComponentStatusChange called with:', { mappingId, newStatus, skuCode });
     
     try {
       console.log('📡 Making status change API call to Universal API...');
       const result = await apiPatch('/toggle-status', { 
         type: 'component', 
-        id: componentId, 
+        id: mappingId, 
         is_active: newStatus 
       });
       
@@ -3525,11 +3573,11 @@ const CmSkuDetail: React.FC = () => {
         try {
           // Get component data to extract component_code
           const componentData = skuCode && componentDetails[skuCode] 
-            ? componentDetails[skuCode].find(comp => comp.id === componentId)
+            ? componentDetails[skuCode].find(comp => comp.mapping_id === mappingId)
             : null;
           
           const auditData = {
-            component_id: componentId, // ✅ Primary key of the component
+            component_id: mappingId, // ✅ Primary key of the component mapping
             sku_code: skuCode || '',
             component_code: componentData?.component_code || '',
             component_description: componentData?.component_description || '',
@@ -3574,7 +3622,7 @@ const CmSkuDetail: React.FC = () => {
           setComponentDetails(prev => ({
             ...prev,
             [skuCode]: prev[skuCode].map(row =>
-              row.id === componentId ? { ...row, is_active: newStatus } : row
+              row.mapping_id === mappingId ? { ...row, is_active: newStatus } : row
             )
           }));
           console.log('✅ Local state updated successfully');
@@ -3920,9 +3968,16 @@ const CmSkuDetail: React.FC = () => {
                     className="panel-heading panel-title"
                     style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', background: '#000', color: '#fff', fontWeight: 600, paddingLeft: 10 }}
                     onClick={() => {
+                      console.log('🟢 SKU panel clicked:', sku.sku_code);
+                      console.log('🟢 Current openIndex:', openIndex, 'Clicked index:', index);
+                      console.log('🟢 Component details exist:', !!componentDetails[sku.sku_code]);
+                      
                       setOpenIndex(openIndex === index ? null : index);
                       if (openIndex !== index && !componentDetails[sku.sku_code]) {
+                        console.log('🚀 Calling fetchComponentDetails for:', sku.sku_code);
                         fetchComponentDetails(sku.sku_code);
+                      } else {
+                        console.log('⏭️ Skipping API call - either already open or data exists');
                       }
                     }}
                   >
@@ -4048,8 +4103,11 @@ const CmSkuDetail: React.FC = () => {
                                 type="radio" 
                                 name={`material-type-${sku.id}`} 
                                 value="packaging"
-                                checked={selectedMaterialType === 'packaging'}
-                                onChange={(e) => setSelectedMaterialType(e.target.value)}
+                                checked={skuMaterialTypes[sku.sku_code] === 'packaging'}
+                                onChange={(e) => {
+                                  console.log('🔄 Material type changed to:', e.target.value, 'for SKU:', sku.sku_code);
+                                  setSkuMaterialTypes(prev => ({ ...prev, [sku.sku_code]: e.target.value }));
+                                }}
                                 style={{ marginRight: 6 }}
                               />
                               <span>Packaging </span>
@@ -4059,8 +4117,11 @@ const CmSkuDetail: React.FC = () => {
                                 type="radio" 
                                 name={`material-type-${sku.id}`} 
                                 value="raw_material"
-                                checked={selectedMaterialType === 'raw_material'}
-                                onChange={(e) => setSelectedMaterialType(e.target.value)}
+                                checked={skuMaterialTypes[sku.sku_code] === 'raw_material'}
+                                onChange={(e) => {
+                                  console.log('🔄 Material type changed to:', e.target.value, 'for SKU:', sku.sku_code);
+                                  setSkuMaterialTypes(prev => ({ ...prev, [sku.sku_code]: e.target.value }));
+                                }}
                                 style={{ marginRight: 6 }}
                               />
                               <span>Raw Material</span>
@@ -4447,7 +4508,7 @@ const CmSkuDetail: React.FC = () => {
                                         <input
                                           type="checkbox"
                                           checked={component.is_active || false}
-                                                                                          onChange={() => handleComponentStatusClick(component.id, component.is_active, sku.sku_code)}
+                                          onChange={() => handleComponentStatusClick(component.mapping_id, component.is_active, sku.sku_code)}
                                           style={{
                                             width: '18px',
                                             height: '18px',

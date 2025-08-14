@@ -15,8 +15,7 @@ const LandingPage: React.FC = () => {
     } else if (path === 'cm-sku-details') {
       navigate('/cm-sku-details');
     } else if (path === 'audit-log') {
-      // You can add the audit log route when it's implemented
-      console.log('Audit log navigation not yet implemented');
+      navigate('/audit-log');
     }
     // Add other navigation handlers as needed
   };

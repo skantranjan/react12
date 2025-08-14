@@ -7,6 +7,7 @@ import CmSkuDetail from './pages/CmSkuDetail';
 import SedForApproval from './pages/SedForApproval';
 import GeneratePdf from './pages/GeneratePdf';
 import UploadData from './pages/UploadData';
+import AuditLog from './pages/AuditLog';
 
 import './assets/css/styles.css';
 import './assets/css/remix-icon.css';
@@ -27,6 +28,7 @@ function App() {
         <Route path="/sedforapproval" element={<SedForApproval />} />
         <Route path="/generate-pdf" element={<GeneratePdf />} />
         <Route path="/upload-data" element={<UploadData />} />
+        <Route path="/audit-log" element={<AuditLog />} />
       </Routes>
     </Router>
   );
