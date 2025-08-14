@@ -3058,10 +3058,30 @@ const CmSkuDetail: React.FC = () => {
       setExportLoading(true);
       console.log('🔄 Starting Excel export...');
       
-      // Call the export-excel API
-      const response = await apiPost('/export-excel', {
+      // Prepare API request payload with optional filters
+      const requestPayload: any = {
         cm_code: cmCode
-      });
+      };
+      
+      // Add reporting period filter if selected (optional)
+      if (selectedYears.length > 0) {
+        requestPayload.reporting_period = selectedYears[0];
+        console.log('📅 Adding period filter:', selectedYears[0]);
+      }
+      
+      // Add SKU code filter if selected (optional)
+      if (selectedSkuDescriptions.length > 0) {
+        // Extract SKU code from the selected format "cm_code - sku_description"
+        const selectedSkuDesc = selectedSkuDescriptions[0];
+        const skuCode = selectedSkuDesc.split(' - ')[0] || selectedSkuDesc;
+        requestPayload.sku_code = skuCode;
+        console.log('🏷️ Adding SKU filter:', skuCode);
+      }
+      
+      console.log('📤 Export API request payload:', requestPayload);
+      
+      // Call the export-excel API with filters
+      const response = await apiPost('/export-excel', requestPayload);
       
       if (!response.success) {
         console.error('❌ Export API failed:', response.message);
@@ -3070,6 +3090,20 @@ const CmSkuDetail: React.FC = () => {
       }
       
       console.log('✅ Export API response:', response);
+      
+      // Log filter summary
+      if (selectedYears.length > 0 || selectedSkuDescriptions.length > 0) {
+        console.log('🔍 Export filters applied:');
+        if (selectedYears.length > 0) {
+          console.log('  📅 Period:', selectedYears[0]);
+        }
+        if (selectedSkuDescriptions.length > 0) {
+          const skuCode = selectedSkuDescriptions[0].split(' - ')[0] || selectedSkuDescriptions[0];
+          console.log('  🏷️ SKU Code:', skuCode);
+        }
+      } else {
+        console.log('🔍 No filters applied - exporting all data');
+      }
       
       // Extract component data from API response
       const componentData = response.data || [];
@@ -3174,8 +3208,12 @@ const CmSkuDetail: React.FC = () => {
       
       console.log(`✅ Excel export completed: ${exportData.length} rows exported to ${filename}`);
       
-      // Show success message
-      alert(`Successfully exported ${exportData.length} component records to ${filename}`);
+      // Success message logged to console only (no alert)
+      let filterInfo = '';
+      if (selectedYears.length > 0 || selectedSkuDescriptions.length > 0) {
+        filterInfo = ' (with applied filters)';
+      }
+      console.log(`✅ Export completed: ${exportData.length} component records exported to ${filename}${filterInfo}`);
       
     } catch (error) {
       console.error('❌ Export to Excel failed:', error);
