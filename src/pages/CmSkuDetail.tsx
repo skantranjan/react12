@@ -1932,13 +1932,7 @@ const CmSkuDetail: React.FC = () => {
       console.log('Filtered components (only checked):', filteredComponents);
       console.log('Filtered components length:', filteredComponents.length);
       
-      // Validate that we have selected components
-      if (filteredComponents.length === 0) {
-        console.warn('⚠️ No components selected! All checkboxes are unchecked.');
-        setAddSkuErrors(prev => ({ ...prev, referenceSku: 'Please select at least one component to add' }));
-        setAddSkuLoading(false);
-        return;
-      }
+
       
       // Only send skutype if checkbox is checked (user wants reference SKU)
       const skutypeParam = showSkuTypeSection ? addSkuType : '';
