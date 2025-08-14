@@ -403,16 +403,16 @@ const CmSkuDetail: React.FC = () => {
         params.append('period', selectedYears[0]);
       }
       
-      console.log('Fetching data from universal API:', `/cm-dashboard/${cmCode}?${params}`);
+     // console.log('Fetching data from universal API:', `/cm-dashboard/${cmCode}?${params}`);
       const result: DashboardResponse = await apiGet(`/cm-dashboard/${cmCode}?${params}`);
       
       if (result.success && result.data) {
-        console.log('Universal API data received:', result.data);
+       // console.log('Universal API data received:', result.data);
         
         // Update all states from consolidated response
         if (result.data.skus) {
           setSkuData(result.data.skus);
-          console.log('SKUs loaded from universal API:', result.data.skus.length);
+          //console.log('SKUs loaded from universal API:', result.data.skus.length);
         }
         
         if (result.data.descriptions) {
@@ -423,7 +423,7 @@ const CmSkuDetail: React.FC = () => {
               label: `${item.cm_code} - ${item.sku_description}`
             }));
           setSkuDescriptions(descriptionsWithLabels);
-          console.log('SKU descriptions loaded from universal API:', descriptionsWithLabels.length);
+         // console.log('SKU descriptions loaded from universal API:', descriptionsWithLabels.length);
         }
         
         if (result.data.master_data) {
@@ -450,12 +450,12 @@ const CmSkuDetail: React.FC = () => {
               });
             
             setYears(processedYears);
-            console.log('Years loaded from universal API:', processedYears.length);
+           // console.log('Years loaded from universal API:', processedYears.length);
             
             // Automatically select the latest year (first item after sorting)
             if (processedYears.length > 0) {
               const latestPeriod = processedYears[0]; // First item is the latest year
-              console.log('Automatically selecting latest period:', latestPeriod.period);
+              //console.log('Automatically selecting latest period:', latestPeriod.period);
               
               setSelectedYears([latestPeriod.id]);
               // Apply filter automatically for the latest period
@@ -466,27 +466,27 @@ const CmSkuDetail: React.FC = () => {
           // Set master data for other components
           if (result.data.master_data.material_types) {
             setMaterialTypes(result.data.master_data.material_types);
-            console.log('Material types loaded:', result.data.master_data.material_types.length);
+            //console.log('Material types loaded:', result.data.master_data.material_types.length);
           }
           if (result.data.master_data.component_uoms) {
             setUnitOfMeasureOptions(result.data.master_data.component_uoms);
-            console.log('Component UOMs loaded:', result.data.master_data.component_uoms.length);
+            //console.log('Component UOMs loaded:', result.data.master_data.component_uoms.length);
           }
           if (result.data.master_data.packaging_levels) {
             setPackagingLevelOptions(result.data.master_data.packaging_levels);
-            console.log('Packaging levels loaded:', result.data.master_data.packaging_levels.length);
+            //console.log('Packaging levels loaded:', result.data.master_data.packaging_levels.length);
           }
           if (result.data.master_data.packaging_materials) {
             setPackagingMaterialOptions(result.data.master_data.packaging_materials);
-            console.log('Packaging materials loaded:', result.data.master_data.packaging_materials.length);
+            //console.log('Packaging materials loaded:', result.data.master_data.packaging_materials.length);
           }
           if (result.data.master_data.component_base_uoms) {
             setComponentBaseUoms(result.data.master_data.component_base_uoms);
-            console.log('Component base UOMs loaded:', result.data.master_data.component_base_uoms.length);
+           // console.log('Component base UOMs loaded:', result.data.master_data.component_base_uoms.length);
           }
         }
         
-        console.log('All data loaded successfully from universal API');
+       // console.log('All data loaded successfully from universal API');
         return result.data; // Return data for further processing
       } else {
         throw new Error('Universal API returned unsuccessful response');
@@ -519,7 +519,7 @@ const CmSkuDetail: React.FC = () => {
       const data = await fetchDashboardData(['skus']);
       if (data && data.skus) {
         setSkuData(data.skus);
-        console.log('SKU details loaded from universal API');
+       // console.log('SKU details loaded from universal API');
       }
     } catch (err) {
       console.error('Error fetching SKU details:', err);
@@ -545,7 +545,7 @@ const CmSkuDetail: React.FC = () => {
             label: `${item.cm_code} - ${item.sku_description}`
           }));
         setSkuDescriptions(descriptionsWithLabels);
-        console.log('SKU descriptions loaded from universal API');
+       // console.log('SKU descriptions loaded from universal API');
       }
     } catch (err) {
       console.error('Error fetching SKU descriptions:', err);
@@ -682,7 +682,7 @@ const CmSkuDetail: React.FC = () => {
   useEffect(() => {
     const fetchYears = async () => {
       try {
-        console.log('Fetching years from consolidated master data');
+      //  console.log('Fetching years from consolidated master data');
         const result: MasterDataResponse = await apiGet('/get-masterdata');
         
         if (result.success && result.data && result.data.periods) {
@@ -708,13 +708,13 @@ const CmSkuDetail: React.FC = () => {
             }) as Array<{id: string, period: string}>;
           
           setYears(processedYears);
-          console.log('Years loaded from consolidated API (sorted by desc):', processedYears.length);
-          console.log('Sorted periods:', processedYears.map(p => p.period));
+          // console.log('Years loaded from consolidated API (sorted by desc):', processedYears.length);
+          // console.log('Sorted periods:', processedYears.map(p => p.period));
           
           // Automatically select the latest year (first item after sorting)
           if (processedYears.length > 0) {
             const latestPeriod = processedYears[0]; // First item is the latest year
-            console.log('Automatically selecting latest period:', latestPeriod.period);
+            //console.log('Automatically selecting latest period:', latestPeriod.period);
             
             setSelectedYears([latestPeriod.id]);
             // Apply filter automatically for the latest period
@@ -737,7 +737,7 @@ const CmSkuDetail: React.FC = () => {
     if (years.length > 0 && selectedYears.length === 0) {
       // Automatically select the latest year (first item after sorting)
       const latestPeriod = years[0]; // First item is the latest year after sorting
-      console.log('Auto-selecting latest period from useEffect:', latestPeriod.period);
+      //console.log('Auto-selecting latest period from useEffect:', latestPeriod.period);
       
       setSelectedYears([latestPeriod.id]);
       // Apply filter automatically for the latest period
@@ -762,7 +762,7 @@ const CmSkuDetail: React.FC = () => {
               label: `${item.cm_code} - ${item.sku_description}`
             }));
           setSkuDescriptions(descriptionsWithLabels);
-          console.log('SKU descriptions loaded from Universal API');
+          //console.log('SKU descriptions loaded from Universal API');
         }
       } catch (err) {
         console.error('Error fetching SKU descriptions:', err);
@@ -775,52 +775,52 @@ const CmSkuDetail: React.FC = () => {
   // Helper functions to convert IDs to names using master data
   const getMaterialTypeName = (id: string | number) => {
     if (!id) return '-';
-    console.log('getMaterialTypeName called with id:', id, 'materialTypes length:', materialTypes.length, 'materialTypes:', materialTypes);
+    //console.log('getMaterialTypeName called with id:', id, 'materialTypes length:', materialTypes.length, 'materialTypes:', materialTypes);
     const materialType = materialTypes.find(mt => mt.id == id);
-    console.log('Found materialType:', materialType);
+    //console.log('Found materialType:', materialType);
     return materialType ? materialType.item_name : id;
   };
 
   const getUomName = (id: string | number) => {
     if (!id) return '-';
-    console.log('getUomName called with id:', id, 'unitOfMeasureOptions:', unitOfMeasureOptions);
+   // console.log('getUomName called with id:', id, 'unitOfMeasureOptions:', unitOfMeasureOptions);
     const uom = unitOfMeasureOptions.find(u => u.id == id);
-    console.log('Found uom:', uom);
+    //console.log('Found uom:', uom);
     return uom ? uom.item_name : id;
   };
 
   const getPackagingLevelName = (id: string | number) => {
     if (!id) return '-';
-    console.log('getPackagingLevelName called with id:', id, 'packagingLevelOptions:', packagingLevelOptions);
+   // console.log('getPackagingLevelName called with id:', id, 'packagingLevelOptions:', packagingLevelOptions);
     const level = packagingLevelOptions.find(pl => pl.id == id);
-    console.log('Found level:', level);
+   // console.log('Found level:', level);
     return level ? level.item_name : id;
   };
 
   const getPackagingMaterialName = (id: string | number) => {
     if (!id) return '-';
-    console.log('getPackagingMaterialName called with id:', id, 'packagingMaterialOptions:', packagingMaterialOptions);
+   //// console.log('getPackagingMaterialName called with id:', id, 'packagingMaterialOptions:', packagingMaterialOptions);
     const material = packagingMaterialOptions.find(pm => pm.id == id);
-    console.log('Found material:', material);
+   // console.log('Found material:', material);
     return material ? material.item_name : id;
   };
 
   const getBaseUomName = (id: string | number) => {
     if (!id) return '-';
-    console.log('getBaseUomName called with id:', id, 'componentBaseUoms:', componentBaseUoms);
+    ////console.log('getBaseUomName called with id:', id, 'componentBaseUoms:', componentBaseUoms);
     const uom = componentBaseUoms.find(bu => bu.id == id);
-    console.log('Found uom:', uom);
+    //console.log('Found uom:', uom);
     return uom ? uom.item_name : id;
   };
 
   // Ensure master data is loaded when Add SKU modal opens
   useEffect(() => {
     if (showSkuModal && materialTypes.length === 0) {
-      console.log('Add SKU modal opened, loading master data...');
+     // console.log('Add SKU modal opened, loading master data...');
       // Try direct master data API first
       apiGet('/get-masterdata').then(result => {
         if (result.success && result.data) {
-          console.log('Master data loaded for Add SKU modal:', result.data);
+        //  console.log('Master data loaded for Add SKU modal:', result.data);
           if (result.data.material_types) {
             setMaterialTypes(result.data.material_types);
           }
@@ -887,41 +887,41 @@ const CmSkuDetail: React.FC = () => {
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
-        console.log('Fetching master data from Universal API');
+        //console.log('Fetching master data from Universal API');
         const data = await fetchDashboardData(['master-data']);
         
         if (data && data.master_data) {
           // Set material types
           if (data.master_data.material_types && Array.isArray(data.master_data.material_types)) {
             setMaterialTypes(data.master_data.material_types);
-            console.log('Material types loaded from Universal API:', data.master_data.material_types.length);
+           // console.log('Material types loaded from Universal API:', data.master_data.material_types.length);
           }
           
           // Set unit of measure options
           if (data.master_data.component_uoms && Array.isArray(data.master_data.component_uoms)) {
             setUnitOfMeasureOptions(data.master_data.component_uoms);
-            console.log('Component UOMs loaded from Universal API:', data.master_data.component_uoms.length);
+           ////// console.log('Component UOMs loaded from Universal API:', data.master_data.component_uoms.length);
           }
           
           // Set packaging level options
           if (data.master_data.packaging_levels && Array.isArray(data.master_data.packaging_levels)) {
             setPackagingLevelOptions(data.master_data.packaging_levels);
-            console.log('Packaging levels loaded from Universal API:', data.master_data.packaging_levels.length);
+           // console.log('Packaging levels loaded from Universal API:', data.master_data.packaging_levels.length);
           }
           
           // Set packaging material options
           if (data.master_data.packaging_materials && Array.isArray(data.master_data.packaging_materials)) {
             setPackagingMaterialOptions(data.master_data.packaging_materials);
-            console.log('Packaging materials loaded from Universal API:', data.master_data.packaging_materials.length);
+            //console.log('Packaging materials loaded from Universal API:', data.master_data.packaging_materials.length);
           }
           
           // Set component base UOMs
           if (data.master_data.component_base_uoms && Array.isArray(data.master_data.component_base_uoms)) {
             setComponentBaseUoms(data.master_data.component_base_uoms);
-            console.log('Component base UOMs loaded from Universal API:', data.master_data.component_base_uoms.length);
+            //console.log('Component base UOMs loaded from Universal API:', data.master_data.component_base_uoms.length);
           }
           
-          console.log('All master data loaded successfully from Universal API');
+          //console.log('All master data loaded successfully from Universal API');
         } else {
           console.error('Universal API returned no master data');
           // Set empty arrays as fallback
@@ -2095,7 +2095,7 @@ const CmSkuDetail: React.FC = () => {
           
           const result: DashboardResponse = await apiGet(`/cm-dashboard/${cmCode}?${params}`);
           if (result.success && result.data && result.data.skus) {
-            console.log('SKU data refreshed from consolidated API after add operation');
+            //console.log('SKU data refreshed from consolidated API after add operation');
             for (const sku of result.data.skus) {
               await fetchComponentDetails(sku.sku_code);
             }
@@ -2163,26 +2163,40 @@ const CmSkuDetail: React.FC = () => {
   const [editModalLoading, setEditModalLoading] = useState<boolean>(false);
   
   // Edit modal component selection state
-  const [editSelectedComponentIds, setEditSelectedComponentIds] = useState<number[]>([]);
+  const [editSelectedComponentIds, setEditSelectedComponentIds] = useState<(string | number)[]>([]);
   
   // Handle edit modal component selection
-  const handleEditComponentSelect = (componentId: number, checked: boolean) => {
-    if (checked) {
-      setEditSelectedComponentIds([...editSelectedComponentIds, componentId]);
-    } else {
-      setEditSelectedComponentIds(editSelectedComponentIds.filter(id => id !== componentId));
-    }
+  const handleEditComponentSelect = (componentId: string | number, checked: boolean) => {
+    console.log('🔍 handleEditComponentSelect called:', { componentId, checked, type: typeof componentId });
+    console.log('🔍 Current editSelectedComponentIds:', editSelectedComponentIds);
+    
+    // Use functional update to avoid stale state issues
+    setEditSelectedComponentIds(prevIds => {
+      console.log('🔍 Previous IDs in functional update:', prevIds);
+      console.log('🔍 Component ID being processed:', componentId);
+      
+      let newIds;
+      if (checked) {
+        // Add component if not already selected
+        if (!prevIds.includes(componentId)) {
+          newIds = [...prevIds, componentId];
+          console.log('🔍 Adding component, new selection:', newIds);
+        } else {
+          newIds = prevIds; // Already selected, no change
+          console.log('🔍 Component already selected, no change');
+        }
+      } else {
+        // Remove component if currently selected
+        newIds = prevIds.filter(id => id !== componentId);
+        console.log('🔍 Removing component, new selection:', newIds);
+      }
+      
+      console.log('🔍 Final newIds being returned:', newIds);
+      return newIds;
+    });
   };
   
-  // Handle edit modal select all components
-  const handleEditSelectAll = (checked: boolean) => {
-    if (checked) {
-      const allComponentIds = editSelectedSkuComponents.map((component: any) => component.id);
-      setEditSelectedComponentIds(allComponentIds);
-    } else {
-      setEditSelectedComponentIds([]);
-    }
-  };
+
 
   // Edit SKU Reference SKU options fetch function
   const fetchEditReferenceSkuOptions = async (period: string, cmCode: string) => {
@@ -2234,7 +2248,7 @@ const CmSkuDetail: React.FC = () => {
       });
       
       if (result.success && result.data && result.data.component_details) {
-        console.log('SKU reference search results from sku-component-mapping API:', result.data.component_details.length);
+       // console.log('SKU reference search results from sku-component-mapping API:', result.data.component_details.length);
         
         // Map the API response to the expected format
         const mappedResults = result.data.component_details.map((component: any) => {
@@ -2263,7 +2277,7 @@ const CmSkuDetail: React.FC = () => {
         setEditSkuSearchResults([]);
         setShowEditSkuSearchResults(false);
         setShowEditComponentTable(false);
-        console.log('No SKU reference search results found in sku-component-mapping API');
+        //console.log('No SKU reference search results found in sku-component-mapping API');
       }
     } catch (error) {
       console.error('Error searching SKU references from sku-component-mapping API:', error);
@@ -2295,7 +2309,7 @@ const CmSkuDetail: React.FC = () => {
         setEditSelectedComponentIds(allComponentIds);
         setShowEditComponentTable(true);
       } else {
-        console.log('No component details found for selected SKU reference');
+      //  console.log('No component details found for selected SKU reference');
         setEditSelectedSkuComponents([]);
         setEditSelectedComponentIds([]);
         setShowEditComponentTable(false);
@@ -2368,7 +2382,7 @@ const CmSkuDetail: React.FC = () => {
         const result = await apiGet('/get-masterdata');
         if (result.success && result.data && result.data.material_types) {
           setMaterialTypes(result.data.material_types);
-          console.log('Material types loaded for edit modal:', result.data.material_types.length);
+          //console.log('Material types loaded for edit modal:', result.data.material_types.length);
         }
       }
       
@@ -2441,11 +2455,12 @@ const CmSkuDetail: React.FC = () => {
 
       // Add component data if available - only send selected components
       if (editSelectedComponentIds.length > 0) {
-        const selectedComponents = editSelectedSkuComponents.filter(component => 
-          editSelectedComponentIds.includes(component.id)
-        );
+        const selectedComponents = editSelectedSkuComponents.filter(component => {
+          const uniqueId = component.component_code || `component-${editSelectedSkuComponents.indexOf(component)}`;
+          return editSelectedComponentIds.includes(uniqueId);
+        });
         updateData.components = selectedComponents;
-        console.log('Sending selected component data:', selectedComponents);
+        //console.log('Sending selected component data:', selectedComponents);
       }
 
       const result = await apiPut(`/sku-details/update/${encodeURIComponent(editSkuData.sku)}`, updateData);
@@ -2668,9 +2683,9 @@ const CmSkuDetail: React.FC = () => {
     // Get the material type selection for this specific SKU
     const skuMaterialType = skuMaterialTypes[skuCode] || 'packaging';
     
-    console.log('🔍 Filtering components for SKU:', skuCode);
-    console.log('🔍 Total components:', components.length);
-    console.log('🔍 Selected material type:', skuMaterialType);
+    // console.log('🔍 Filtering components for SKU:', skuCode);
+    // console.log('🔍 Total components:', components.length);
+    // console.log('🔍 Selected material type:', skuMaterialType);
     
     let filteredComponents;
     
@@ -2679,16 +2694,16 @@ const CmSkuDetail: React.FC = () => {
         const materialTypeId = parseInt(component.material_type_id);
         return materialTypeId === 1;
       });
-      console.log('📦 Packaging components found:', filteredComponents.length);
+     // console.log('📦 Packaging components found:', filteredComponents.length);
     } else if (skuMaterialType === 'raw_material') {
       filteredComponents = components.filter(component => {
         const materialTypeId = parseInt(component.material_type_id);
         return materialTypeId === 2;
       });
-      console.log('🏗️ Raw material components found:', filteredComponents.length);
+     // console.log('🏗️ Raw material components found:', filteredComponents.length);
     } else {
       filteredComponents = components;
-      console.log('📋 All components shown:', filteredComponents.length);
+     // console.log('📋 All components shown:', filteredComponents.length);
     }
     
     return filteredComponents;
@@ -2696,8 +2711,8 @@ const CmSkuDetail: React.FC = () => {
 
   // Function to fetch component details for a SKU using getcomponentbyskureference API
   const fetchComponentDetails = async (skuCode: string) => {
-    console.log('🔍 fetchComponentDetails called with skuCode:', skuCode);
-    console.log('🔍 cmCode:', cmCode, 'addSkuContractor:', addSkuContractor);
+    // console.log('🔍 fetchComponentDetails called with skuCode:', skuCode);
+    // console.log('🔍 cmCode:', cmCode, 'addSkuContractor:', addSkuContractor);
     
     setComponentDetailsLoading(prev => ({ ...prev, [skuCode]: true }));
     try {
@@ -2706,14 +2721,14 @@ const CmSkuDetail: React.FC = () => {
         cm_code: cmCode || addSkuContractor,
         sku_code: skuCode
       };
-      console.log('🌐 API URL: POST /getcomponentbyskureference');
-      console.log('📤 Request Body:', requestBody);
+      // console.log('🌐 API URL: POST /getcomponentbyskureference');
+      // console.log('📤 Request Body:', requestBody);
       
       const data = await apiPost('/getcomponentbyskureference', requestBody);
-      console.log('📡 API Response:', data);
+     // console.log('📡 API Response:', data);
       
       if (data.success && data.data && data.data.length > 0) {
-        console.log('✅ Component details loaded from getcomponentbyskureference API:', data.data.length);
+       //onsole.log('✅ Component details loaded from getcomponentbyskureference API:', data.data.length);
         
         // Map the component data to include display names
         const mappedData = data.data.map((component: any) => {
@@ -2749,7 +2764,7 @@ const CmSkuDetail: React.FC = () => {
         // Store components for API call
         setComponentsToSave(mappedData);
       } else {
-        console.log('No component details found in getcomponentbyskureference API');
+        //console.log('No component details found in getcomponentbyskureference API');
         setComponentDetails(prev => ({ ...prev, [skuCode]: [] }));
         setSelectedSkuComponents([]);
         setEditSelectedSkuComponents([]);
@@ -2758,7 +2773,7 @@ const CmSkuDetail: React.FC = () => {
         setComponentsToSave([]);
       }
     } catch (err) {
-      console.error('Error fetching component details from getcomponentbyskureference API:', err);
+      //console.error('Error fetching component details from getcomponentbyskureference API:', err);
       setComponentDetails(prev => ({ ...prev, [skuCode]: [] }));
       setSelectedSkuComponents([]);
       setEditSelectedSkuComponents([]);
@@ -2879,11 +2894,11 @@ const CmSkuDetail: React.FC = () => {
       const category4Files = uploadedFiles.filter(upload => upload.categories.includes('4')).flatMap(upload => upload.files);
 
       // Debug logging
-      console.log('Uploaded files state:', uploadedFiles);
-      console.log('Category 1 files (Weight):', category1Files);
-      console.log('Category 2 files (Weight UOM):', category2Files);
-      console.log('Category 3 files (Packaging Type):', category3Files);
-      console.log('Category 4 files (Material Type):', category4Files);
+      // console.log('Uploaded files state:', uploadedFiles);
+      // console.log('Category 1 files (Weight):', category1Files);
+      // console.log('Category 2 files (Weight UOM):', category2Files);
+      // console.log('Category 3 files (Packaging Type):', category3Files);
+      // console.log('Category 4 files (Material Type):', category4Files);
 
       // Weight files
       if (category1Files.length > 0) {
@@ -2918,11 +2933,11 @@ const CmSkuDetail: React.FC = () => {
       }
 
       // Debug: Log FormData contents
-      console.log('FormData contents:');
+     // console.log('FormData contents:');
       const formDataEntries: [string, FormDataEntryValue][] = [];
       formData.forEach((value, key) => {
         formDataEntries.push([key, value]);
-        console.log(key, value);
+        //console.log(key, value);
       });
 
       // Make the API call
@@ -2960,7 +2975,7 @@ const CmSkuDetail: React.FC = () => {
           };
         
         await apiPost('/add-component-audit-log', auditData);
-        console.log('Audit log created for component creation');
+       // console.log('Audit log created for component creation');
       } catch (auditError) {
         console.error('Failed to log audit trail:', auditError);
       }
@@ -3217,15 +3232,15 @@ const CmSkuDetail: React.FC = () => {
   useEffect(() => {
     const fetchMaterialTypeOptions = async () => {
       try {
-        console.log('Fetching material types from Universal API');
+       // console.log('Fetching material types from Universal API');
         const data = await fetchDashboardData(['master-data']);
         
         if (data && data.master_data && data.master_data.material_types) {
           // Use material_types from Universal API
           setMaterialTypeOptions(data.master_data.material_types);
-          console.log('Material types loaded from Universal API:', data.master_data.material_types.length);
+          //console.log('Material types loaded from Universal API:', data.master_data.material_types.length);
         } else {
-          console.error('No material_types data in Universal API response');
+         // console.error('No material_types data in Universal API response');
           setMaterialTypeOptions([]);
         }
       } catch (err) {
@@ -6735,12 +6750,7 @@ const CmSkuDetail: React.FC = () => {
                                     <thead style={{ backgroundColor: '#f8f9fa' }}>
                                       <tr>
                                         <th style={{ padding: '8px', fontSize: '10px' }}>
-                                          <input
-                                            type="checkbox"
-                                            checked={editSelectedComponentIds.length === editSelectedSkuComponents.length && editSelectedSkuComponents.length > 0}
-                                            onChange={(e) => handleEditSelectAll(e.target.checked)}
-                                            style={{ cursor: 'pointer' }}
-                                          />
+                                          Select
                                         </th>
                                         <th style={{ padding: '8px', fontSize: '10px' }}>Component Code</th>
                                         <th style={{ padding: '8px', fontSize: '10px' }}>Description</th>
@@ -6774,16 +6784,29 @@ const CmSkuDetail: React.FC = () => {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                        {editSelectedSkuComponents.map((component, index) => (
-                                          <tr key={index}>
-                                            <td style={{ padding: '4px 6px', fontSize: '9px', textAlign: 'center' }}>
-                                              <input
-                                                type="checkbox"
-                                                checked={editSelectedComponentIds.includes(component.id)}
-                                                onChange={(e) => handleEditComponentSelect(component.id, e.target.checked)}
-                                                style={{ cursor: 'pointer' }}
-                                              />
-                                            </td>
+                                        {editSelectedSkuComponents.map((component, index) => {
+                                          // Use component_code as unique identifier since component.id is undefined
+                                          const uniqueId = component.component_code || `component-${index}`;
+                                          const isSelected = editSelectedComponentIds.includes(uniqueId);
+                                          
+                                          console.log('🔍 Rendering component row:', { 
+                                            index, 
+                                            uniqueId,
+                                            componentCode: component.component_code,
+                                            isSelected,
+                                            componentObject: component
+                                          });
+                                          
+                                          return (
+                                            <tr key={`edit-component-${uniqueId}`}>
+                                              <td style={{ padding: '4px 6px', fontSize: '9px', textAlign: 'center' }}>
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isSelected}
+                                                  onChange={(e) => handleEditComponentSelect(uniqueId, e.target.checked)}
+                                                  style={{ cursor: 'pointer' }}
+                                                />
+                                              </td>
                                             <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_code}</td>
                                             <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.component_description}</td>
                                             <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.formulation_reference || '-'}</td>
@@ -6814,7 +6837,8 @@ const CmSkuDetail: React.FC = () => {
                                             <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.periods}</td>
                                             <td style={{ padding: '4px 6px', fontSize: '9px' }}>{component.is_active ? 'Yes' : 'No'}</td>
                                           </tr>
-                                      ))}
+                                        );
+                                      })}
                                     </tbody>
                                   </table>
                                 </div>
