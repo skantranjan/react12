@@ -1,3 +1,11 @@
+response : 2025-08-19T13:25:54Z
+hmacstringfor Get: J1P1e+dMC15FNI91DGw72+uvP2wBWA5YKt4Hkh3kduI=
+hmacstringfor Post: aUYyj0SMCbQpYeLIys5C9Ig8n8DeKEfs1DMRn2p0dPU=
+hmacstringfor Put: SzdHNBKKFwdVxPC2X0cCvlhvfuVsMU355hnLeS5LzCg=
+hmacstringfor Delete: 3gvFCm/GZoIXE7/x7A3CjsMuRNlEIyBkn202Ri8zcm8=
+
+
+
 <html>
 <head>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
