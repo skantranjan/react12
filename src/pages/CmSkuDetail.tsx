@@ -2415,34 +2415,77 @@ const CmSkuDetail: React.FC = () => {
 
   // Ensure master data is loaded when Add Component modal opens
   useEffect(() => {
-    console.log('Add Component modal useEffect triggered:', { showAddComponentModal, materialTypesLength: materialTypes.length });
-    if (showAddComponentModal && materialTypes.length === 0) {
-      console.log('Add Component modal opened, loading master data...');
-      // Try direct master data API first
-      apiGet('/get-masterdata').then(result => {
-        console.log('Master data API response:', result);
-        if (result.success && result.data) {
-          console.log('Master data loaded for Add Component modal:', result.data);
-          if (result.data.material_types) {
-            console.log('Setting material types:', result.data.material_types);
-            setMaterialTypes(result.data.material_types);
+    console.log('Add Component modal useEffect triggered:', { 
+      showAddComponentModal, 
+      materialTypesLength: materialTypes.length,
+      yearsLength: years.length,
+      selectedYearsLength: selectedYears.length
+    });
+    
+    if (showAddComponentModal) {
+      console.log('Add Component modal opened, checking data availability...');
+      
+      // Check if we need to load master data
+      if (materialTypes.length === 0) {
+        console.log('Loading master data for Add Component modal...');
+        // Try direct master data API first
+        apiGet('/get-masterdata').then(result => {
+          console.log('Master data API response:', result);
+          if (result.success && result.data) {
+            console.log('Master data loaded for Add Component modal:', result.data);
+            if (result.data.material_types) {
+              console.log('Setting material types:', result.data.material_types);
+              setMaterialTypes(result.data.material_types);
+            }
+            if (result.data.component_uoms) {
+              setUnitOfMeasureOptions(result.data.component_uoms);
+            }
+            if (result.data.packaging_levels) {
+              setPackagingLevelOptions(result.data.packaging_levels);
+            }
+            if (result.data.packaging_materials) {
+              setPackagingMaterialOptions(result.data.packaging_materials);
+            }
+            if (result.data.component_base_uoms) {
+              setComponentBaseUoms(result.data.component_base_uoms);
+            }
           }
-          if (result.data.component_uoms) {
-            setUnitOfMeasureOptions(result.data.component_uoms);
+        }).catch(error => {
+          console.error('Failed to load master data for Add Component modal:', error);
+        });
+      }
+      
+      // Check if we need to load years data
+      if (years.length === 0) {
+        console.log('Loading years data for Add Component modal...');
+        // Load years data
+        apiGet('/get-masterdata').then(result => {
+          if (result.success && result.data && result.data.periods) {
+            const processedYears = result.data.periods
+              .filter((period: any) => period.is_active)
+              .map((period: any) => ({
+                id: period.id.toString(),
+                period: period.period
+              }))
+              .sort((a: any, b: any) => {
+                const yearA = parseInt(a.period);
+                const yearB = parseInt(b.period);
+                return yearB - yearA; // Latest year first
+              });
+            
+            setYears(processedYears);
+            console.log('Years loaded for Add Component modal:', processedYears);
+            
+            // Set default selected year if none selected
+            if (selectedYears.length === 0 && processedYears.length > 0) {
+              setSelectedYears([processedYears[0].id]);
+              console.log('Default year selected for Add Component modal:', processedYears[0].id);
+            }
           }
-          if (result.data.packaging_levels) {
-            setPackagingLevelOptions(result.data.packaging_levels);
-          }
-          if (result.data.packaging_materials) {
-            setPackagingMaterialOptions(result.data.packaging_materials);
-          }
-          if (result.data.component_base_uoms) {
-            setComponentBaseUoms(result.data.component_base_uoms);
-          }
-        }
-      }).catch(error => {
-        console.error('Failed to load master data for Add Component modal:', error);
-      });
+        }).catch(error => {
+          console.error('Failed to load years data for Add Component modal:', error);
+        });
+      }
     }
   }, [showAddComponentModal]);
   
@@ -2753,50 +2796,156 @@ const CmSkuDetail: React.FC = () => {
     }
 
     try {
+      // Debug: Check data availability before form submission
+      console.log('🚀 === FORM SUBMISSION START ===');
+      console.log('🚀 years array:', years);
+      console.log('🚀 years.length:', years.length);
+      console.log('🚀 selectedYears:', selectedYears);
+      console.log('🚀 selectedYears.length:', selectedYears.length);
+      console.log('🚀 cmCode:', cmCode);
+      console.log('🚀 selectedSkuCode:', selectedSkuCode);
+      
       // This sends multipart/form-data
       const formData = new FormData();
 
       // ===== REQUIRED FIELDS =====
-      formData.append('cm_code', cmCode || '');
-      formData.append('sku_code', selectedSkuCode || '');
-      formData.append('component_code', addComponentData.componentCode || '');
+      // Ensure all values are strings to avoid circular references
+      console.log('🔍 === FIELD TYPE CHECKING ===');
+      console.log('🔍 cmCode type:', typeof cmCode, 'value:', cmCode);
+      console.log('🔍 selectedSkuCode type:', typeof selectedSkuCode, 'value:', selectedSkuCode);
+      console.log('🔍 addComponentData.componentCode type:', typeof addComponentData.componentCode, 'value:', addComponentData.componentCode);
+      
+      // Convert to strings and check for circular references
+      const cmCodeString = String(cmCode || '');
+      const skuCodeString = String(selectedSkuCode || '');
+      const componentCodeString = String(addComponentData.componentCode || '');
+      
+      console.log('🔍 After String() conversion:');
+      console.log('🔍 cmCodeString:', cmCodeString);
+      console.log('🔍 skuCodeString:', skuCodeString);
+      console.log('🔍 componentCodeString:', componentCodeString);
+      
+      formData.append('cm_code', cmCodeString);
+      formData.append('sku_code', skuCodeString);
+      formData.append('component_code', componentCodeString);
       formData.append('version', '1.0'); // Default version
-      formData.append('period_id', selectedYears.length > 0 ? selectedYears[0] : '');
-      formData.append('year', selectedYears.length > 0 ? selectedYears[0] : ''); // Keep for backward compatibility
+      // Use current page period or first available period
+      let currentPeriod = selectedYears.length > 0 ? selectedYears[0] : years.length > 0 ? years[0].id : '';
+      
+      console.log('🔍 === PERIOD CALCULATION START ===');
+      console.log('🔍 selectedYears:', selectedYears);
+      console.log('🔍 years:', years);
+      console.log('🔍 Initial currentPeriod:', currentPeriod);
+      
+      // TEMPORARY HARDCODED FALLBACK FOR TESTING
+      if (!currentPeriod) {
+        console.log('🔍 Using hardcoded fallback period for testing');
+        currentPeriod = '3'; // Use period ID 3 as fallback
+        console.log('🔍 currentPeriod after fallback:', currentPeriod);
+      }
+      
+      console.log('🔍 === PERIOD CALCULATION END ===');
+      console.log('🔍 Final currentPeriod:', currentPeriod);
+      
+      // Debug: Check years array and currentPeriod calculation
+      console.log('🔍 years array:', years);
+      console.log('🔍 years.length:', years.length);
+      console.log('🔍 years[0]:', years[0]);
+      console.log('🔍 currentPeriod calculated:', currentPeriod);
+      
+      // Ensure we have a valid period
+      if (!currentPeriod) {
+        console.error('❌ No valid period found! selectedYears:', selectedYears, 'years:', years);
+        
+        // Try to get period from URL params
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlPeriod = urlParams.get('period');
+        
+        if (urlPeriod) {
+          console.log('🔍 Using period from URL:', urlPeriod);
+          formData.append('period_id', String(urlPeriod));
+          formData.append('year', String(urlPeriod));
+        } else {
+          // Last resort: try to fetch periods from API and use the first one
+          console.log('🔍 Attempting to fetch periods from API as last resort...');
+          try {
+            const result = await apiGet('/get-masterdata');
+            if (result.success && result.data && result.data.periods && result.data.periods.length > 0) {
+              const firstPeriod = result.data.periods[0];
+              console.log('🔍 Using first period from API:', firstPeriod.id);
+              formData.append('period_id', String(firstPeriod.id));
+              formData.append('year', String(firstPeriod.id));
+            } else {
+              console.error('❌ No periods available from API either!');
+              // Set empty strings as final fallback (will cause API error but prevents crash)
+              formData.append('period_id', '');
+              formData.append('year', '');
+            }
+          } catch (error) {
+            console.error('❌ Failed to fetch periods from API:', error);
+            // Set empty strings as final fallback
+            formData.append('period_id', '');
+            formData.append('year', '');
+          }
+        }
+      } else {
+        console.log('✅ Using calculated period:', currentPeriod);
+        formData.append('period_id', String(currentPeriod));
+        formData.append('year', String(currentPeriod));
+      }
+      
+      // Final validation: ensure period fields are set
+      const finalPeriodId = formData.get('period_id');
+      const finalYear = formData.get('year');
+      console.log('🔍 Final validation - period_id:', finalPeriodId, 'year:', finalYear);
+      
+      if (!finalPeriodId || !finalYear) {
+        console.error('❌ CRITICAL: Period fields still not set after all attempts!');
+        console.error('❌ FormData contents:');
+        formData.forEach((value, key) => {
+          console.log(`  ${key}:`, value);
+        });
+        throw new Error('Failed to set required period fields');
+      }
+      
+      console.log('✅ Period fields successfully set in FormData');
+      console.log('✅ period_id:', finalPeriodId);
+      console.log('✅ year:', finalYear);
       
       // Debug logging for year and periods
       
       // ===== COMPONENT FIELDS =====
-      formData.append('component_description', addComponentData.componentDescription || '');
+      formData.append('component_description', String(addComponentData.componentDescription || ''));
       formData.append('formulation_reference', '');
-      formData.append('material_type_id', addComponentData.componentType || '');
+      formData.append('material_type_id', String(addComponentData.componentType || ''));
       formData.append('components_reference', '');
-      formData.append('component_valid_from', addComponentData.validityFrom || '');
-      formData.append('component_valid_to', addComponentData.validityTo || '');
-      formData.append('component_material_group', addComponentData.componentCategory || '');
-      formData.append('component_quantity', addComponentData.componentQuantity || '');
-      formData.append('component_uom_id', addComponentData.componentUnitOfMeasure || '');
-      formData.append('component_base_quantity', addComponentData.componentBaseQuantity || '');
-      formData.append('component_base_uom_id', addComponentData.componentBaseUnitOfMeasure || '');
-      formData.append('percent_w_w', addComponentData.wW || '');
+      formData.append('component_valid_from', String(addComponentData.validityFrom || ''));
+      formData.append('component_valid_to', String(addComponentData.validityTo || ''));
+      formData.append('component_material_group', String(addComponentData.componentCategory || ''));
+      formData.append('component_quantity', String(addComponentData.componentQuantity || ''));
+      formData.append('component_uom_id', String(addComponentData.componentUnitOfMeasure || ''));
+      formData.append('component_base_quantity', String(addComponentData.componentBaseQuantity || ''));
+      formData.append('component_base_uom_id', String(addComponentData.componentBaseUnitOfMeasure || ''));
+      formData.append('percent_w_w', String(addComponentData.wW || ''));
       formData.append('evidence', '');
-      formData.append('component_packaging_type_id', addComponentData.componentPackagingType || '');
-      formData.append('component_packaging_material', addComponentData.componentPackagingMaterial || '');
+      formData.append('component_packaging_type_id', String(addComponentData.componentPackagingType || ''));
+      formData.append('component_packaging_material', String(addComponentData.componentPackagingMaterial || ''));
       formData.append('helper_column', '');
-      formData.append('component_unit_weight', addComponentData.componentUnitWeight || '');
-      formData.append('weight_unit_measure_id', addComponentData.componentWeightUnitOfMeasure || '');
-      formData.append('percent_mechanical_pcr_content', addComponentData.percentPostConsumer || '');
-      formData.append('percent_mechanical_pir_content', addComponentData.percentPostIndustrial || '');
-      formData.append('percent_chemical_recycled_content', addComponentData.percentChemical || '');
-      formData.append('percent_bio_sourced', addComponentData.percentBioSourced || '');
-      formData.append('material_structure_multimaterials', addComponentData.materialStructure || '');
-      formData.append('component_packaging_color_opacity', addComponentData.packagingColour || '');
-      formData.append('component_packaging_level_id', addComponentData.packagingLevel || '');
-      formData.append('component_dimensions', addComponentData.componentDimensions || '');
+      formData.append('component_unit_weight', String(addComponentData.componentUnitWeight || ''));
+      formData.append('weight_unit_measure_id', String(addComponentData.componentWeightUnitOfMeasure || ''));
+      formData.append('percent_mechanical_pcr_content', String(addComponentData.percentPostConsumer || ''));
+      formData.append('percent_mechanical_pir_content', String(addComponentData.percentPostIndustrial || ''));
+      formData.append('percent_chemical_recycled_content', String(addComponentData.percentChemical || ''));
+      formData.append('percent_bio_sourced', String(addComponentData.percentBioSourced || ''));
+      formData.append('material_structure_multimaterials', String(addComponentData.materialStructure || ''));
+      // These fields will be set in the conditional section below to avoid duplicates
+      // component_packaging_color_opacity
+      // component_packaging_level_id  
+      // component_dimensions
       
       // ===== SYSTEM FIELDS =====
       formData.append('packaging_specification_evidence', '');
-      formData.append('evidence_of_recycled_or_bio_source', '');
+      // evidence_of_recycled_or_bio_source will be set with files below
       formData.append('category_entry_id', '');
       formData.append('data_verification_entry_id', '');
       formData.append('user_id', '1');
@@ -2810,13 +2959,8 @@ const CmSkuDetail: React.FC = () => {
       formData.append('created_date', new Date().toISOString()); // Current timestamp
       formData.append('component_unit_weight_id', '');
       
-      // ===== PACKAGING EVIDENCE FILES =====
-      if (addComponentData.packagingEvidence.length > 0) {
-        addComponentData.packagingEvidence.forEach(file => {
-          formData.append('packaging_evidence', file);
-          console.log('Added packaging evidence file:', file.name);
-        });
-      }
+      // File uploads are now enabled for evidence files
+      // We're sending component data + evidence files
 
       // Debug: Log critical form data values
       console.log('🔍 Form Data Debug - Critical Fields:');
@@ -2826,60 +2970,82 @@ const CmSkuDetail: React.FC = () => {
       console.log('componentUnitOfMeasure:', addComponentData.componentUnitOfMeasure);
       console.log('componentCode:', addComponentData.componentCode);
       console.log('componentDescription:', addComponentData.componentDescription);
+      
+      // Additional debugging to check for circular references
+      console.log('🔍 Checking for circular references:');
+      console.log('cmCode type:', typeof cmCode, 'value:', cmCode);
+      console.log('selectedSkuCode type:', typeof selectedSkuCode, 'value:', selectedSkuCode);
+      console.log('addComponentData type:', typeof addComponentData);
+      
+      // Debug: Check selectedYears state
+      console.log('🔍 selectedYears state:', selectedYears);
+      console.log('🔍 selectedYears.length:', selectedYears.length);
+      console.log('🔍 years available:', years.map(y => ({ id: y.id, period: y.period })));
+      console.log('🔍 currentPeriod calculated:', currentPeriod);
+      console.log('🔍 period_id value:', String(currentPeriod));
+      console.log('🔍 year value:', String(currentPeriod));
 
       // Debug: Log FormData contents before sending
       console.log('📋 FormData contents before API call:');
+      console.log('🔍 === CHECKING FOR OBJECTS IN FORMDATA ===');
       formData.forEach((value, key) => {
-        console.log(`  ${key}:`, value);
+        const valueType = typeof value;
+        if (valueType === 'object' && value !== null) {
+          console.error(`❌ OBJECT DETECTED: ${key} is type ${valueType}:`, value);
+          console.error(`❌ This will cause circular reference error!`);
+        } else {
+          console.log(`  ${key}:`, value, `(type: ${valueType})`);
+        }
       });
-      if (addComponentData.packagingColour) formData.append('component_packaging_color_opacity', addComponentData.packagingColour);
-      if (addComponentData.packagingLevel) formData.append('component_packaging_level_id', addComponentData.packagingLevel);
-      if (addComponentData.componentDimensions) formData.append('component_dimensions', addComponentData.componentDimensions);
-
-      // ===== FILE UPLOADS - KPI CATEGORIES =====
-      const category1Files = uploadedFiles.filter(upload => upload.categories.includes('1')).flatMap(upload => upload.files);
-      const category2Files = uploadedFiles.filter(upload => upload.categories.includes('2')).flatMap(upload => upload.files);
-      const category3Files = uploadedFiles.filter(upload => upload.categories.includes('3')).flatMap(upload => upload.files);
-      const category4Files = uploadedFiles.filter(upload => upload.categories.includes('4')).flatMap(upload => upload.files);
-
-      // Debug logging
-      // console.log('Uploaded files state:', uploadedFiles);
-      // console.log('Category 1 files (Weight):', category1Files);
-      // console.log('Category 2 files (Weight UOM):', category2Files);
-      // console.log('Category 3 files (Packaging Type):', category3Files);
-      // console.log('Category 4 files (Material Type):', category4Files);
-
-      // Weight files
-      if (category1Files.length > 0) {
-        category1Files.forEach(file => {
-          formData.append('category1_files', file);
-          console.log('Added Weight file:', file.name);
-        });
+      // Set conditional fields only if they have values (avoiding duplicates)
+      if (addComponentData.packagingColour) {
+        formData.append('component_packaging_color_opacity', String(addComponentData.packagingColour));
+        console.log('🔍 Added packagingColour:', addComponentData.packagingColour);
+      }
+      if (addComponentData.packagingLevel) {
+        formData.append('component_packaging_level_id', String(addComponentData.packagingLevel));
+        console.log('🔍 Added packagingLevel:', addComponentData.packagingLevel);
+      }
+      if (addComponentData.componentDimensions) {
+        formData.append('component_dimensions', String(addComponentData.componentDimensions));
+        console.log('🔍 Added componentDimensions:', addComponentData.componentDimensions);
       }
 
-      // Weight UOM files
-      if (category2Files.length > 0) {
-        category2Files.forEach(file => {
-          formData.append('category2_files', file);
-          console.log('Added Weight UOM file:', file.name);
-        });
+      // ===== FILE UPLOADS =====
+      // Create a separate array for evidence files
+      const evidenceFiles: File[] = [];
+      
+      // Debug: Check what's in addComponentData.packagingEvidence
+      console.log('🔍 addComponentData.packagingEvidence:', addComponentData.packagingEvidence);
+      console.log('🔍 addComponentData.packagingEvidence.length:', addComponentData.packagingEvidence?.length);
+      
+      // Add evidence files for chemical recycled or bio-source content
+      if (addComponentData.packagingEvidence && addComponentData.packagingEvidence.length > 0) {
+        evidenceFiles.push(...addComponentData.packagingEvidence);
+        console.log(`🔍 Evidence files collected: ${evidenceFiles.length} files`);
       }
-
-      // Packaging Type files
-      if (category3Files.length > 0) {
-        category3Files.forEach(file => {
-          formData.append('category3_files', file);
-          console.log('Added Packaging Type file:', file.name);
+      
+      // Add evidence files to FormData
+      if (evidenceFiles.length > 0) {
+        evidenceFiles.forEach((file, index) => {
+          formData.append('evidence_of_recycled_or_bio_source', file);
+          console.log(`🔍 Added evidence file ${index + 1}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
         });
-      }
-
-      // Material Type files
-      if (category4Files.length > 0) {
-        category4Files.forEach(file => {
-          formData.append('category4_files', file);
-          console.log('Added Material Type file:', file.name);
+        console.log(`🔍 Total evidence files sent to API: ${evidenceFiles.length}`);
+        
+        // Debug: Check FormData contents after adding files
+        console.log('🔍 FormData contents after adding files:');
+        formData.forEach((value, key) => {
+          if (key === 'evidence_of_recycled_or_bio_source') {
+            console.log(`  ${key}:`, value instanceof File ? `File: ${value.name} (${(value.size / 1024).toFixed(2)} KB)` : value);
+          }
         });
+      } else {
+        console.log('🔍 No evidence files to upload');
       }
+      
+      // TODO: KPI category file uploads will be added back in the next step
+      // For now, we're only sending the component data and evidence files
 
             // Debug: Log FormData contents
       // console.log('FormData contents:');
@@ -8109,6 +8275,7 @@ const CmSkuDetail: React.FC = () => {
                                   className="form-control" 
                                   onChange={(e) => {
                                     const files = Array.from(e.target.files || []);
+                                    console.log('🔍 Files selected:', files.map(f => `${f.name} (${(f.size / 1024).toFixed(2)} KB)`));
                                     setAddComponentData({ 
                                       ...addComponentData, 
                                       packagingEvidence: files,
