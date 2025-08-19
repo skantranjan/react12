@@ -83,19 +83,43 @@ const UploadData: React.FC = () => {
         const headers = jsonData[0] as string[];
         setExcelHeaders(headers);
 
-        // Extract data (remaining rows)
+        // Validate required columns
+        const requiredColumns = ['SkuCode', 'SkuDescription'];
+        const missingColumns = requiredColumns.filter(col => 
+          !headers.some(header => header.toLowerCase() === col.toLowerCase())
+        );
+
+        if (missingColumns.length > 0) {
+          setError(`Missing required columns: ${missingColumns.join(', ')}. Please ensure your Excel file has SkuCode and SkuDescription columns.`);
+          setFileLoading(false);
+          return;
+        }
+
+        // Extract data (remaining rows) - only SkuCode and SkuDescription
         const dataRows = jsonData.slice(1).map((row: any, index: number) => {
-          const rowData: any = {};
-          headers.forEach((header, colIndex) => {
-            rowData[header] = row[colIndex] || '';
-            rowData['_rowIndex'] = index + 1; // Add row index for reference
-          });
-          return rowData;
-        });
+          const skuCodeIndex = headers.findIndex(header => header.toLowerCase() === 'skucode');
+          const skuDescriptionIndex = headers.findIndex(header => header.toLowerCase() === 'skudescription');
+          
+          return {
+            sku_code: row[skuCodeIndex] || '',
+            sku_description: row[skuDescriptionIndex] || '',
+            _rowIndex: index + 1
+          };
+        }).filter(row => row.sku_code && row.sku_description); // Only include rows with both values
+
+        if (dataRows.length === 0) {
+          setError('No valid rows found. Please ensure your Excel file has data in both SkuCode and SkuDescription columns.');
+          setFileLoading(false);
+          return;
+        }
 
         setExcelData(dataRows);
         setFileLoading(false);
-        console.log('Excel file loaded successfully:', { headers, dataRows: dataRows.length });
+        console.log('Excel file loaded successfully:', { 
+          headers, 
+          dataRows: dataRows.length,
+          sampleData: dataRows.slice(0, 3) // Log first 3 rows for verification
+        });
       } catch (err) {
         console.error('Error reading Excel file:', err);
         setError('Error reading the Excel file. Please ensure it\'s a valid Excel file.');
@@ -118,8 +142,8 @@ const UploadData: React.FC = () => {
       return;
     }
 
-    if (!selectedFromYear || !selectedToYear) {
-      setError('Please select both From and To periods');
+    if (!selectedToYear) {
+      setError('Please ensure To Period is selected');
       return;
     }
 
@@ -128,34 +152,38 @@ const UploadData: React.FC = () => {
     setUploadSuccess(null);
 
     try {
-      // Prepare data for upload
+      // Prepare data for copy-sku API
       const uploadData = {
         cm_code: cmCode,
-        cm_description: cmDescription,
-        from_period: selectedFromYear,
-        to_period: selectedToYear,
-        file_name: selectedFile.name,
-        total_rows: excelData.length,
-        data: excelData
+        year_id: selectedToYear, // Using To Period value as year_id
+        skuData: excelData.map(row => ({
+          sku_code: row.sku_code,
+          sku_description: row.sku_description
+        }))
       };
 
-      console.log('Uploading data:', uploadData);
+      console.log('Sending data to copy-sku API:', uploadData);
+      console.log('Debug - cm_code:', cmCode);
+      console.log('Debug - year_id:', selectedToYear);
+      console.log('Debug - skuData length:', excelData.length);
+      console.log('Debug - skuData sample:', excelData.slice(0, 2));
 
-      // TODO: Replace with actual API endpoint
-      // const response = await apiPost('/upload-excel-data', uploadData);
+      // Call the copy-sku API
+      const response = await apiPost('/copy-sku', uploadData);
       
-      // For now, simulate successful upload
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (response && response.success) {
+        setUploadSuccess(`Successfully uploaded ${excelData.length} SKU records!`);
+        setExcelData([]);
+        setExcelHeaders([]);
+        setSelectedFile(null);
+        console.log('SKU data uploaded successfully:', response);
+      } else {
+        throw new Error(response?.message || 'Upload failed');
+      }
       
-      setUploadSuccess(`Successfully uploaded ${excelData.length} rows of data!`);
-      setExcelData([]);
-      setExcelHeaders([]);
-      setSelectedFile(null);
-      
-      console.log('Data uploaded successfully');
     } catch (err) {
-      console.error('Error uploading data:', err);
-      setError('Error uploading data. Please try again.');
+      console.error('Error uploading SKU data:', err);
+      setError(`Error uploading data: ${err instanceof Error ? err.message : 'Please try again.'}`);
     } finally {
       setUploadLoading(false);
     }
@@ -169,217 +197,78 @@ const UploadData: React.FC = () => {
         setLoading(true);
         setError(null);
         
-        // Use the specified API endpoint
-        let response = await apiGet('/sku-details-active-years');
-        console.log('Years API response status:', response.status);
-        console.log('Years API response headers:', response.headers);
-        
-        if (!response.ok) {
-          console.log('Primary endpoint failed, trying alternative endpoints...');
-          
-          // Try alternative endpoints
-          const alternativeEndpoints = [
-            '/component-years',
-            '/years',
-            '/periods',
-            '/active-years'
-          ];
-          
-          for (const endpoint of alternativeEndpoints) {
-            try {
-              console.log(`Trying alternative endpoint: ${endpoint}`);
-              response = await apiGet(endpoint);
-              console.log(`${endpoint} response status:`, response.status);
-              
-              if (response.ok) {
-                console.log(`Success with endpoint: ${endpoint}`);
-                break;
-              }
-            } catch (altErr) {
-              console.log(`Failed with endpoint ${endpoint}:`, altErr);
-            }
-          }
-          
-                            if (!response.ok) {
-            try {
-              const errorText = await response.text();
-              console.error('API Error Response:', errorText);
-            } catch (textError) {
-              console.error('Could not read error response text:', textError);
-            }
-            
-                      // If all API calls fail, use mock data for testing
-          console.log('Using mock data as fallback');
-          const mockYears = [
-            { id: '1', period: 'July 2024 to June 2025' },
-            { id: '2', period: 'July 2025 to June 2026' },
-            { id: '3', period: 'July 2023 to June 2024' }
-          ];
-          setYears(mockYears);
-          
-          // Auto-select previous year and current year periods
-          const now = new Date();
-          const currentYear = now.getFullYear();
-          const previousYear = currentYear - 1;
-          
-          // Find previous year period (e.g., "July 2024 to June 2025")
-          const previousYearOption = mockYears.find(year => 
-            year.period.includes(previousYear.toString())
-          );
-          
-          // Find current year period (e.g., "July 2025 to June 2026")
-          const currentYearOption = mockYears.find(year => 
-            year.period.includes(currentYear.toString())
-          );
-          
-          if (previousYearOption) {
-            setSelectedFromYear(previousYearOption.id);
-            console.log('Auto-selected previous year for From:', previousYearOption.period);
-          }
-          
-          if (currentYearOption) {
-            setSelectedToYear(currentYearOption.id);
-            console.log('Auto-selected current year for To:', currentYearOption.period);
-          }
-            
-            
-            return;
-          }
-        }
-        
-        const result = await response.json();
+        // Use the master data API endpoint
+        const result = await apiGet('/get-masterdata');
         console.log('Years API result:', result);
         
-        // Extract years data from the API response
+        // Extract periods data from the master data API response
         let yearsData = [];
         
-        // Handle different response formats
-        if (Array.isArray(result)) {
-          // Direct array response
-          yearsData = result;
-        } else if (result && result.success && Array.isArray(result.years)) {
-          // Response with success flag and years array
-          yearsData = result.years;
-        } else if (result && Array.isArray(result.years)) {
-          // Response with years array but no success flag
-          yearsData = result.years;
-        } else if (result && result.data && Array.isArray(result.data)) {
-          // Response with data array
-          yearsData = result.data;
+        if (result && result.success && result.data && result.data.periods) {
+          // Master data API response format
+          yearsData = result.data.periods;
+          console.log('Extracted periods from master data:', yearsData);
         } else {
-          console.warn('Unexpected API response format:', result);
+          console.warn('Unexpected master data API response format:', result);
           yearsData = [];
         }
         
-        console.log('Extracted yearsData:', yearsData);
-        
-        // Process the years data into the expected format
+                // Process the periods data into the expected format and sort by year in descending order
         const processedYears = yearsData.map((item: any) => {
-          if (typeof item === 'string') {
-            return { id: item, period: item };
-          } else if (typeof item === 'number') {
-            return { id: item.toString(), period: item.toString() };
-          } else if (item && typeof item === 'object') {
-            // Handle object format
-            if (item.period && item.id) {
-              return { id: item.id.toString(), period: item.period };
-            } else if (item.year && item.id) {
-              return { id: item.id.toString(), period: item.year };
-            } else if (item.id) {
-              return { id: item.id.toString(), period: item.id.toString() };
-            } else if (item.period) {
-              return { id: item.period, period: item.period };
-            }
+          if (item && typeof item === 'object' && item.period && item.id) {
+            return { id: item.id.toString(), period: item.period };
           }
           return null;
         }).filter(Boolean);
         
-        console.log('Processed years:', processedYears);
-        setYears(processedYears);
+        // Sort periods by ID value in descending order (highest ID first)
+        const sortedYears = processedYears.sort((a: any, b: any) => {
+          const idA = parseInt(a.id);
+          const idB = parseInt(b.id);
+          
+          return idB - idA; // Descending order by ID value
+        });
         
-                  if (processedYears.length === 0) {
-            console.warn('No years found in API response');
-            setError('No years available in the system.');
-          } else {
-            // Auto-select previous year and current year periods
-            const now = new Date();
-            const currentYear = now.getFullYear();
-            const previousYear = currentYear - 1;
-            
-            // Find previous year and current year options
-            // Look for periods containing the year numbers
-            const previousYearOption = processedYears.find((year: any) => 
-              year.period.includes(previousYear.toString()) || year.id.includes(previousYear.toString())
-            );
-            
-            const currentYearOption = processedYears.find((year: any) => 
-              year.period.includes(currentYear.toString()) || year.id.includes(currentYear.toString())
-            );
-            
-            // Auto-select previous year for "From" and current year for "To"
-            if (previousYearOption) {
-              setSelectedFromYear(previousYearOption.id);
-              console.log('Auto-selected previous year for From:', previousYearOption.period);
-            }
-            
-            if (currentYearOption) {
-              setSelectedToYear(currentYearOption.id);
-              console.log('Auto-selected current year for To:', currentYearOption.period);
-            }
-          }
-             } catch (err) {
-         console.error('Error fetching years:', err);
-         
-                   // Use mock data as fallback when API fails
-          console.log('Using mock data due to API error');
-          const mockYears = [
-            { id: '1', period: 'July 2024 to June 2025' },
-            { id: '2', period: 'July 2025 to June 2026' },
-            { id: '3', period: 'July 2023 to June 2024' }
-          ];
-          setYears(mockYears);
-          
-          // Auto-select previous year and current year periods
-          const now = new Date();
-          const currentYear = now.getFullYear();
-          const previousYear = currentYear - 1;
-          
-          // Find previous year period (e.g., "July 2024 to June 2025")
-          const previousYearOption = mockYears.find(year => 
-            year.period.includes(previousYear.toString())
-          );
-          
-          // Find current year period (e.g., "July 2025 to June 2026")
-          const currentYearOption = mockYears.find(year => 
-            year.period.includes(currentYear.toString())
-          );
-          
-          if (previousYearOption) {
-            setSelectedFromYear(previousYearOption.id);
-            console.log('Auto-selected previous year for From:', previousYearOption.period);
-          }
-          
-          if (currentYearOption) {
-            setSelectedToYear(currentYearOption.id);
-            console.log('Auto-selected current year for To:', currentYearOption.period);
-          }
-         
-         
-       } finally {
-         setLoading(false);
-       }
+        console.log('Processed and sorted years:', sortedYears);
+        setYears(sortedYears);
+        
+                 if (sortedYears.length === 0) {
+           console.warn('No periods found in master data API response');
+           setError('No periods available in the system.');
+         } else {
+           // Auto-select based on sorted IDs (descending order)
+           // From Period: Second highest ID (index 1)
+           // To Period: Highest ID (index 0)
+           if (sortedYears.length >= 2) {
+             // From Period: Second highest ID
+             const fromPeriodOption = sortedYears[1]; // Index 1 = second highest
+             setSelectedFromYear(fromPeriodOption.id);
+             console.log('Auto-selected From Period (second highest ID):', fromPeriodOption.period, 'ID:', fromPeriodOption.id);
+             
+             // To Period: Highest ID
+             const toPeriodOption = sortedYears[0]; // Index 0 = highest
+             setSelectedToYear(toPeriodOption.id);
+             console.log('Auto-selected To Period (highest ID):', toPeriodOption.period, 'ID:', toPeriodOption.id);
+           } else if (sortedYears.length === 1) {
+             // If only one period available, use it for both
+             setSelectedFromYear(sortedYears[0].id);
+             setSelectedToYear(sortedYears[0].id);
+             console.log('Only one period available, using for both:', sortedYears[0].period);
+           }
+         }
+        
+      } catch (err) {
+        console.error('Error fetching years from master data API:', err);
+        setError('Failed to load periods. Please try again.');
+        setYears([]);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchYears();
   }, []);
 
-  // Handle apply filters button click
-  const handleApplyFilters = () => {
-    if (selectedFromYear && selectedToYear) {
-      console.log('Applying period filter - From:', selectedFromYear, 'To:', selectedToYear);
-    } else {
-      console.log('Please select both From and To periods');
-    }
-  };
+
 
   return (
     <Layout>
@@ -449,98 +338,94 @@ const UploadData: React.FC = () => {
                 <li>
                   <div className="fBold">From Period</div>
                   <div className="form-control">
-                    <select
-                      value={selectedFromYear}
-                      onChange={(e) => {
-                        setSelectedFromYear(e.target.value);
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        backgroundColor: '#fff',
-                        border: 'none',
-                        outline: 'none'
-                      }}
-                      disabled={years.length === 0}
-                    >
+                                         <select
+                       value={selectedFromYear}
+                       style={{
+                         width: '100%',
+                         padding: '8px 12px',
+                         borderRadius: '4px',
+                         fontSize: '14px',
+                         backgroundColor: '#f8f9fa',
+                         border: '1px solid #ddd',
+                         outline: 'none',
+                         cursor: 'not-allowed'
+                       }}
+                       disabled={true}
+                     >
                       <option value="">Select From Period</option>
-                      {years.length === 0 ? (
-                        <option value="" disabled>Loading periods...</option>
-                      ) : (
-                        years
-                          .filter(year => {
-                            // Only show previous year period in From dropdown
-                            const now = new Date();
-                            const previousYear = now.getFullYear() - 1;
-                            return year.period.includes(previousYear.toString());
-                          })
-                          .map((year, index) => (
-                            <option key={index} value={year.id}>
-                              {year.period}
-                            </option>
-                          ))
-                      )}
+                                             {years.length === 0 ? (
+                         <option value="" disabled>Loading periods...</option>
+                       ) : (
+                         // Show second highest ID period for From dropdown
+                         years.length >= 2 ? (
+                           <option value={years[1].id}>
+                             {years[1].period}
+                           </option>
+                         ) : years.length === 1 ? (
+                           <option value={years[0].id}>
+                             {years[0].period}
+                           </option>
+                         ) : null
+                       )}
                     </select>
                   </div>
                 </li>
                 <li>
                   <div className="fBold">To Period</div>
                   <div className="form-control">
-                    <select
-                      value={selectedToYear}
-                      onChange={(e) => {
-                        setSelectedToYear(e.target.value);
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        backgroundColor: '#fff',
-                        border: 'none',
-                        outline: 'none'
-                      }}
-                      disabled={years.length === 0}
-                    >
-                      <option value="">Select To Period</option>
-                      {years.length === 0 ? (
-                        <option value="" disabled>Loading periods...</option>
-                      ) : (
-                                                 years
-                           .filter(year => {
-                             // Only show current year period in To dropdown
-                             const now = new Date();
-                             const currentYear = now.getFullYear();
-                             return year.period.includes(currentYear.toString());
-                           })
-                                                       .map((year, index) => (
-                              <option key={index} value={year.id}>
-                                {year.period}
-                              </option>
-                            ))
-                      )}
-                    </select>
-                  </div>
-                </li>
-                                 <li>
-                   <div className="fBold">Browse</div>
-                   <div className="form-control">
-                     <input
-                       type="file"
-                       accept=".xlsx,.xls,.csv"
-                       onChange={handleFileUpload}
+                                         <select
+                       value={selectedToYear}
                        style={{
                          width: '100%',
                          padding: '8px 12px',
                          borderRadius: '4px',
                          fontSize: '14px',
-                         backgroundColor: '#fff',
+                         backgroundColor: '#f8f9fa',
                          border: '1px solid #ddd',
-                         outline: 'none'
+                         outline: 'none',
+                         cursor: 'not-allowed'
                        }}
-                     />
+                       disabled={true}
+                     >
+                      <option value="">Select To Period</option>
+                                             {years.length === 0 ? (
+                         <option value="" disabled>Loading periods...</option>
+                       ) : (
+                         // Show highest ID period for To dropdown
+                         years.length >= 1 ? (
+                           <option value={years[0].id}>
+                             {years[0].period}
+                           </option>
+                         ) : null
+                       )}
+                    </select>
+                  </div>
+                </li>
+                                                  <li>
+                    <div className="fBold">Browse Excel File</div>
+                    <div className="form-control">
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        onChange={handleFileUpload}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          borderRadius: '4px',
+                          fontSize: '14px',
+                          backgroundColor: '#fff',
+                          border: '1px solid #ddd',
+                          outline: 'none'
+                        }}
+                      />
+                      <div style={{ 
+                        marginTop: '4px', 
+                        fontSize: '11px', 
+                        color: '#666',
+                        fontStyle: 'italic'
+                      }}>
+                        Required columns: SkuCode, SkuDescription
+                      </div>
                      {selectedFile && (
                        <div style={{ 
                          marginTop: '8px', 
@@ -597,110 +482,7 @@ const UploadData: React.FC = () => {
           </div>
         </div>
 
-        {/* Excel Data Preview Table */}
-        {excelData.length > 0 && (
-          <div style={{ 
-            marginTop: '30px',
-            background: 'white',
-            borderRadius: '8px',
-            border: '1px solid #e9ecef',
-            overflow: 'hidden',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-          }}>
-            <div style={{
-              backgroundColor: '#000',
-              color: 'white',
-              padding: '15px 20px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <h5 style={{ margin: 0, fontSize: '18px' }}>
-                <i className="ri-file-excel-line" style={{ marginRight: '8px' }}></i>
-                Excel Data Preview
-              </h5>
-              <div style={{ fontSize: '14px', color: '#ccc' }}>
-                {excelData.length} rows loaded from {selectedFile?.name}
-              </div>
-            </div>
-            
-            <div style={{ maxHeight: '500px', overflowX: 'auto', overflowY: 'auto' }}>
-              <table style={{ 
-                width: '100%', 
-                borderCollapse: 'collapse',
-                backgroundColor: '#fff'
-              }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f8f9fa' }}>
-                    <th style={{ 
-                      padding: '12px 16px', 
-                      textAlign: 'left', 
-                      borderBottom: '1px solid #e9ecef', 
-                      fontWeight: '600',
-                      fontSize: '12px',
-                      minWidth: '60px'
-                    }}>
-                      Row
-                    </th>
-                    {excelHeaders.map((header, index) => (
-                      <th key={index} style={{ 
-                        padding: '12px 16px', 
-                        textAlign: 'left', 
-                        borderBottom: '1px solid #e9ecef', 
-                        fontWeight: '600',
-                        fontSize: '12px',
-                        minWidth: '120px'
-                      }}>
-                        {header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {excelData.slice(0, 100).map((row, rowIndex) => (
-                    <tr key={rowIndex} style={{ 
-                      backgroundColor: rowIndex % 2 === 0 ? '#fff' : '#f8f9fa',
-                      borderBottom: '1px solid #e9ecef'
-                    }}>
-                      <td style={{ 
-                        padding: '8px 16px', 
-                        fontSize: '11px', 
-                        color: '#666',
-                        fontWeight: '500',
-                        borderRight: '1px solid #e9ecef'
-                      }}>
-                        {row._rowIndex}
-                      </td>
-                      {excelHeaders.map((header, colIndex) => (
-                        <td key={colIndex} style={{ 
-                          padding: '8px 16px', 
-                          fontSize: '11px',
-                          borderRight: '1px solid #e9ecef'
-                        }}>
-                          {row[header] || '-'}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              
-              {excelData.length > 100 && (
-                <div style={{ 
-                  padding: '15px 20px', 
-                  textAlign: 'center', 
-                  color: '#666',
-                  fontSize: '14px',
-                  borderTop: '1px solid #e9ecef',
-                  backgroundColor: '#f8f9fa'
-                }}>
-                  <i className="ri-information-line" style={{ marginRight: '8px' }}></i>
-                  Showing first 100 rows. Total rows: {excelData.length}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        
 
         {/* File Loading Indicator */}
         {fileLoading && (

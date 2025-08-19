@@ -3965,7 +3965,7 @@ const CmSkuDetail: React.FC = () => {
                     <button
                       className="btnCommon btnGreen filterButtons"
                       style={{ minWidth: 110, fontWeight: 600, marginRight: 0, marginTop: 0, fontSize: '13px', padding: '8px 12px' }}
-                      onClick={() => navigate('/upload-data')}
+                      onClick={() => navigate(`/upload-data?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`)}
                     >
                       <span>Copy Data</span> <i className="ri-file-copy-line"></i>
                     </button>
