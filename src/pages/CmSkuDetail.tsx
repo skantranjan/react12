@@ -3012,36 +3012,116 @@ const CmSkuDetail: React.FC = () => {
       }
 
       // ===== FILE UPLOADS =====
-      // Create a separate array for evidence files
-      const evidenceFiles: File[] = [];
+      console.log('🔍 === FILE UPLOAD PROCESSING START ===');
       
-      // Debug: Check what's in addComponentData.packagingEvidence
-      console.log('🔍 addComponentData.packagingEvidence:', addComponentData.packagingEvidence);
-      console.log('🔍 addComponentData.packagingEvidence.length:', addComponentData.packagingEvidence?.length);
-      
-      // Add evidence files for chemical recycled or bio-source content
+      // 1. CHEMICAL EVIDENCE FILES (Already Working)
+      const chemicalEvidenceFiles: File[] = [];
       if (addComponentData.packagingEvidence && addComponentData.packagingEvidence.length > 0) {
-        evidenceFiles.push(...addComponentData.packagingEvidence);
-        console.log(`🔍 Evidence files collected: ${evidenceFiles.length} files`);
+        chemicalEvidenceFiles.push(...addComponentData.packagingEvidence);
+        console.log(`🔍 Chemical evidence files collected: ${chemicalEvidenceFiles.length} files`);
       }
       
-      // Add evidence files to FormData
-      if (evidenceFiles.length > 0) {
-        evidenceFiles.forEach((file, index) => {
-          formData.append('evidence_of_recycled_or_bio_source', file);
-          console.log(`🔍 Added evidence file ${index + 1}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
-        });
-        console.log(`🔍 Total evidence files sent to API: ${evidenceFiles.length}`);
+      // 2. CATEGORY-BASED EVIDENCE FILES (New Implementation)
+      const categoryFiles = {
+        weight: [] as File[],
+        weight_uom: [] as File[],
+        packaging_type: [] as File[],
+        material_type: [] as File[]
+      };
+      
+      // Process uploaded files by category
+      if (uploadedFiles && uploadedFiles.length > 0) {
+        console.log('🔍 Processing uploaded files by category...');
         
-        // Debug: Check FormData contents after adding files
-        console.log('🔍 FormData contents after adding files:');
-        formData.forEach((value, key) => {
-          if (key === 'evidence_of_recycled_or_bio_source') {
-            console.log(`  ${key}:`, value instanceof File ? `File: ${value.name} (${(value.size / 1024).toFixed(2)} KB)` : value);
+        uploadedFiles.forEach((upload, index) => {
+          console.log(`🔍 Processing upload ${index + 1}:`, upload);
+          
+          if (upload.categories && upload.categories.length > 0 && upload.files && upload.files.length > 0) {
+            upload.categories.forEach(category => {
+              switch (category) {
+                case '1': // Weight category
+                  categoryFiles.weight.push(...upload.files);
+                  console.log(`🔍 Added ${upload.files.length} files to Weight category`);
+                  break;
+                case '2': // Weight UoM category
+                  categoryFiles.weight_uom.push(...upload.files);
+                  console.log(`🔍 Added ${upload.files.length} files to Weight UoM category`);
+                  break;
+                case '3': // Packaging Type category
+                  categoryFiles.packaging_type.push(...upload.files);
+                  console.log(`🔍 Added ${upload.files.length} files to Packaging Type category`);
+                  break;
+                case '4': // Material Type category
+                  categoryFiles.material_type.push(...upload.files);
+                  console.log(`🔍 Added ${upload.files.length} files to Material Type category`);
+                  break;
+                default:
+                  console.log(`🔍 Unknown category: ${category}`);
+              }
+            });
           }
         });
-      } else {
-        console.log('🔍 No evidence files to upload');
+      }
+      
+      // 3. ADD CHEMICAL EVIDENCE FILES TO FORMDATA
+      if (chemicalEvidenceFiles.length > 0) {
+        chemicalEvidenceFiles.forEach((file, index) => {
+          formData.append('evidence_of_recycled_or_bio_source', file);
+          console.log(`🔍 Added chemical evidence file ${index + 1}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+        });
+        console.log(`🔍 Total chemical evidence files sent to API: ${chemicalEvidenceFiles.length}`);
+      }
+      
+      // 4. ADD CATEGORY-BASED FILES TO FORMDATA
+      let totalCategoryFiles = 0;
+      
+      // Weight Evidence Files
+      if (categoryFiles.weight.length > 0) {
+        categoryFiles.weight.forEach((file, index) => {
+          formData.append('weight_evidence_files', file);
+          console.log(`🔍 Added weight evidence file ${index + 1}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+        });
+        totalCategoryFiles += categoryFiles.weight.length;
+        console.log(`🔍 Weight evidence files: ${categoryFiles.weight.length} files`);
+      }
+      
+      // Weight UoM Evidence Files
+      if (categoryFiles.weight_uom.length > 0) {
+        categoryFiles.weight_uom.forEach((file, index) => {
+          formData.append('weight_uom_evidence_files', file);
+          console.log(`🔍 Added weight UoM evidence file ${index + 1}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+        });
+        totalCategoryFiles += categoryFiles.weight_uom.length;
+        console.log(`🔍 Weight UoM evidence files: ${categoryFiles.weight_uom.length} files`);
+      }
+      
+      // Packaging Type Evidence Files
+      if (categoryFiles.packaging_type.length > 0) {
+        categoryFiles.packaging_type.forEach((file, index) => {
+          formData.append('packaging_type_evidence_files', file);
+          console.log(`🔍 Added packaging type evidence file ${index + 1}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+        });
+        totalCategoryFiles += categoryFiles.packaging_type.length;
+        console.log(`🔍 Packaging type evidence files: ${categoryFiles.packaging_type.length} files`);
+      }
+      
+      // Material Type Evidence Files
+      if (categoryFiles.material_type.length > 0) {
+        categoryFiles.material_type.forEach((file, index) => {
+          formData.append('material_type_evidence_files', file);
+          console.log(`🔍 Added material type evidence file ${index + 1}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+        });
+        totalCategoryFiles += categoryFiles.material_type.length;
+        console.log(`🔍 Material type evidence files: ${categoryFiles.material_type.length} files`);
+      }
+      
+      console.log(`🔍 === FILE UPLOAD SUMMARY ===`);
+      console.log(`🔍 Chemical evidence files: ${chemicalEvidenceFiles.length}`);
+      console.log(`🔍 Category-based files: ${totalCategoryFiles}`);
+      console.log(`🔍 Total files being sent: ${chemicalEvidenceFiles.length + totalCategoryFiles}`);
+      
+      if (totalCategoryFiles === 0) {
+        console.log('🔍 No category-based files to upload');
       }
       
       // TODO: KPI category file uploads will be added back in the next step
@@ -8067,7 +8147,7 @@ const CmSkuDetail: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    {/* Fifth Section - Simple */}
+                    {/* Fifth Section - File Uploads */}
                     <div className="col-12">
                       <div style={{
                         border: '1px solid #e9ecef',
@@ -8075,6 +8155,25 @@ const CmSkuDetail: React.FC = () => {
                         marginBottom: '20px',
                         overflow: 'hidden'
                       }}>
+                        {/* Section Header */}
+                        <div style={{
+                          padding: '20px 40px',
+                          backgroundColor: '#f8f9fa',
+                          borderBottom: '1px solid #e9ecef'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                          }}>
+                            <i className="ri-upload-cloud-line" style={{ fontSize: '20px', color: '#30ea03' }} />
+                            <h5 style={{ margin: '0', color: '#333', fontWeight: '600' }}>File Uploads & Evidence</h5>
+                          </div>
+                          <p style={{ margin: '8px 0 0 0', color: '#666', fontSize: '14px' }}>
+                            Upload supporting files for different component categories. Each category can have multiple files.
+                          </p>
+                        </div>
+                        
                         {/* Section Content */}
                         <div style={{
                           padding: '40px',
@@ -8117,22 +8216,36 @@ const CmSkuDetail: React.FC = () => {
                                   marginBottom: '8px',
                                   display: 'block'
                                 }}>
-                                  KPIS for Evidence Mapping<InfoIcon info="Choose one or more categories for file upload." />
+                                  File Categories <InfoIcon info="Choose one or more categories for file upload. Each category can have multiple files." />
                                 </label>
                                 <MultiSelect
                                   options={[
-                                    { value: '1', label: 'Weight' },
-                                    { value: '2', label: 'Weight UoM' },
-                                    { value: '3', label: 'Packaging Type' },
-                                    { value: '4', label: 'Material Type' }
+                                    { value: '1', label: '📏 Weight Evidence' },
+                                    { value: '2', label: '⚖️ Weight UoM Evidence' },
+                                    { value: '3', label: '📦 Packaging Type Evidence' },
+                                    { value: '4', label: '🧱 Material Type Evidence' }
                                   ]}
                                   selectedValues={selectedCategories}
                                   onSelectionChange={(categories) => {
                                     setSelectedCategories(categories);
                                     setCategoryError(''); // Clear error when categories change
                                   }}
-                                  placeholder="Select Categories..."
+                                  placeholder="Select file categories..."
                                 />
+                                {selectedCategories.length > 0 && (
+                                  <div style={{
+                                    marginTop: '8px',
+                                    padding: '8px 12px',
+                                    backgroundColor: '#e8f5e8',
+                                    border: '1px solid #c3e6c3',
+                                    borderRadius: '4px',
+                                    fontSize: '12px',
+                                    color: '#2d5a2d'
+                                  }}>
+                                    <i className="ri-check-line" style={{ marginRight: '4px' }} />
+                                    {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'} selected
+                                  </div>
+                                )}
                                 {categoryError && (
                                   <div style={{
                                     color: '#dc3545',
@@ -8159,26 +8272,7 @@ const CmSkuDetail: React.FC = () => {
                                   marginBottom: '8px',
                                   display: 'block'
                                 }}>
-                                  Browse Files
-                                  <span 
-                                    style={{ 
-                                      marginLeft: '8px', 
-                                      cursor: 'pointer', 
-                                      color: '#888',
-                                      fontSize: '16px',
-                                      transition: 'color 0.2s ease'
-                                    }} 
-                                    onMouseEnter={(e) => {
-                                      showTooltip("Select files to upload for the selected categories", e);
-                                      e.currentTarget.style.color = '#30ea03';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      hideTooltip();
-                                      e.currentTarget.style.color = '#888';
-                                    }}
-                                  >
-                                    <i className="ri-information-line"></i>
-                                  </span>
+                                  📁 Browse Files <InfoIcon info="Select files to upload for the selected categories above." />
                                 </label>
                                 <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
                                   <input
@@ -8222,7 +8316,15 @@ const CmSkuDetail: React.FC = () => {
                                         );
 
                                         if (alreadyAssignedCategories.length > 0) {
-                                          const categoryNames = alreadyAssignedCategories.map(cat => `Category ${cat}`).join(', ');
+                                          const categoryNames = alreadyAssignedCategories.map(cat => {
+                                            const catMap = {
+                                              '1': 'Weight Evidence',
+                                              '2': 'Weight UoM Evidence', 
+                                              '3': 'Packaging Type Evidence',
+                                              '4': 'Material Type Evidence'
+                                            };
+                                            return catMap[cat as keyof typeof catMap] || `Category ${cat}`;
+                                          }).join(', ');
                                           setCategoryError(`${categoryNames} ${alreadyAssignedCategories.length === 1 ? 'is' : 'are'} already assigned to another file. Please remove ${alreadyAssignedCategories.length === 1 ? 'it' : 'them'} from the other file first.`);
                                           return;
                                         }
@@ -8242,9 +8344,23 @@ const CmSkuDetail: React.FC = () => {
                                     disabled={selectedCategories.length === 0 || selectedFiles.length === 0}
                                   >
                                     <i className="ri-add-line" style={{ marginRight: '6px' }} />
-                                    Add
+                                    Add Files
                                   </button>
                                 </div>
+                                {selectedFiles.length > 0 && (
+                                  <div style={{
+                                    marginTop: '8px',
+                                    padding: '8px 12px',
+                                    backgroundColor: '#f0f8ff',
+                                    border: '1px solid #b3d9ff',
+                                    borderRadius: '4px',
+                                    fontSize: '12px',
+                                    color: '#0066cc'
+                                  }}>
+                                    <i className="ri-file-list-line" style={{ marginRight: '4px' }} />
+                                    {selectedFiles.length} file{selectedFiles.length === 1 ? '' : 's'} selected
+                                  </div>
+                                )}
                               </div>
                               {/* Component packaging level (Drop-down list) */}
                               <div className="col-md-6">
@@ -8310,6 +8426,37 @@ const CmSkuDetail: React.FC = () => {
               {uploadedFiles.length > 0 && (
                 <div className="row" style={{ marginTop: '24px' }}>
                   <div className="col-12">
+                    {/* Upload Summary */}
+                    <div style={{
+                      background: '#f8f9fa',
+                      borderRadius: '8px',
+                      border: '1px solid #e9ecef',
+                      padding: '16px 20px',
+                      marginBottom: '16px'
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '12px'
+                      }}>
+                        <i className="ri-file-list-line" style={{ fontSize: '18px', color: '#30ea03' }} />
+                        <span style={{ fontWeight: '600', color: '#333' }}>File Upload Summary</span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#666' }}>
+                        Total files: <strong>{uploadedFiles.reduce((total, upload) => total + upload.files.length, 0)}</strong> | 
+                        Categories: <strong>{uploadedFiles.map(upload => {
+                          const catMap = {
+                            '1': 'Weight Evidence',
+                            '2': 'Weight UoM Evidence',
+                            '3': 'Packaging Type Evidence',
+                            '4': 'Material Type Evidence'
+                          };
+                          return upload.categories.map(cat => catMap[cat as keyof typeof catMap] || `Category ${cat}`).join(', ');
+                        }).join(', ')}</strong>
+                      </div>
+                    </div>
+                    
                     <div style={{ 
                       background: '#fff', 
                       borderRadius: '8px', 
@@ -8334,7 +8481,7 @@ const CmSkuDetail: React.FC = () => {
                                   borderBottom: '1px solid #e9ecef',
                                   color: '#fff'
                                 }}>
-                                  Category
+                                  📁 File Category
                                 </th>
                                 <th style={{ 
                                   padding: '16px 20px', 
@@ -8344,7 +8491,7 @@ const CmSkuDetail: React.FC = () => {
                                   borderBottom: '1px solid #e9ecef',
                                   color: '#fff'
                                 }}>
-                                  Files
+                                  📄 Files
                                 </th>
                                 <th style={{ 
                                   padding: '16px 20px', 
@@ -8355,7 +8502,7 @@ const CmSkuDetail: React.FC = () => {
                                   width: '100px',
                                   color: '#fff'
                                 }}>
-                                  Action
+                                  🗑️ Action
                                 </th>
                               </tr>
                             </thead>
@@ -8372,12 +8519,14 @@ const CmSkuDetail: React.FC = () => {
                                     color: '#333'
                                   }}>
                                     {upload.categoryName || upload.categories.map(cat => {
-                                      // Map category number to category name
-                                      const categoryName = cat === '1' ? 'Weight' : 
-                                                          cat === '2' ? 'Packaging Type' : 
-                                                          cat === '3' ? 'Material' : 
-                                                          cat === '4' ? 'Evidence' : `Category ${cat}`;
-                                      return categoryName;
+                                      // Map category number to category name with icons
+                                      const categoryMap = {
+                                        '1': '📏 Weight Evidence',
+                                        '2': '⚖️ Weight UoM Evidence',
+                                        '3': '📦 Packaging Type Evidence',
+                                        '4': '🧱 Material Type Evidence'
+                                      };
+                                      return categoryMap[cat as keyof typeof categoryMap] || `Category ${cat}`;
                                     }).join(', ')}
                                   </td>
                                   <td style={{ 
@@ -8386,7 +8535,26 @@ const CmSkuDetail: React.FC = () => {
                                     borderBottom: '1px solid #e9ecef',
                                     color: '#333'
                                   }}>
-                                    {upload.files.map(file => file.name).join(', ')}
+                                    {upload.files.map((file, fileIndex) => (
+                                      <div key={fileIndex} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        marginBottom: fileIndex < upload.files.length - 1 ? '4px' : '0',
+                                        padding: '4px 8px',
+                                        backgroundColor: '#f8f9fa',
+                                        borderRadius: '4px',
+                                        fontSize: '12px'
+                                      }}>
+                                        <i className="ri-file-line" style={{ color: '#666' }} />
+                                        <span style={{ color: '#333' }}>{file.name}</span>
+                                        {file.size && (
+                                          <span style={{ color: '#888', fontSize: '11px' }}>
+                                            ({(file.size / 1024).toFixed(1)} KB)
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
                                   </td>
                                   <td style={{ 
                                     padding: '16px 20px', 
