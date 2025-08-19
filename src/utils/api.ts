@@ -104,7 +104,7 @@ export const apiDelete = async (endpoint: string): Promise<any> => {
 };
 
 // For FormData requests (no Content-Type header needed)
-export const apiPostFormData = async (endpoint: string, formData: FormData): Promise<any> => {
+export const apiPostFormData = async (endpoint: string, formData: FormData): Promise<Response> => {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: 'POST',
     headers: {
@@ -113,14 +113,12 @@ export const apiPostFormData = async (endpoint: string, formData: FormData): Pro
     body: formData
   });
   
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-  
-  return response.json();
+  // Return the response object instead of throwing an error
+  // This allows the calling code to handle validation errors properly
+  return response;
 };
 
-export const apiPutFormData = async (endpoint: string, formData: FormData): Promise<any> => {
+export const apiPutFormData = async (endpoint: string, formData: FormData): Promise<Response> => {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: 'PUT',
     headers: {
@@ -129,9 +127,7 @@ export const apiPutFormData = async (endpoint: string, formData: FormData): Prom
     body: formData
   });
   
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-  
-  return response.json();
+  // Return the response object instead of throwing an error
+  // This allows the calling code to handle validation errors properly
+  return response;
 }; 

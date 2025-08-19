@@ -4,14 +4,14 @@ import Layout from '../components/Layout';
 import Loader from '../components/Loader';
 import ConfirmModal from '../components/ConfirmModal';
 import MultiSelect from '../components/MultiSelect';
+import EditComponentModal from '../components/EditComponentModal/EditComponentModal';
 import { Collapse } from 'react-collapse';
 import * as XLSX from 'xlsx';
 import { apiGet, apiPost, apiPut, apiPatch, apiPostFormData, apiPutFormData } from '../utils/api';
 
 // Add CSS for spinning loader
 const spinningStyle = {
-  animation: 'spin 1s linear infinite'
-};
+  animation: 'spin 1s linear infinite'};
 
 // Add keyframes for spinning animation
 const style = document.createElement('style');
@@ -37,6 +37,7 @@ interface SkuData {
   cm_description?: string | null; // Component Master description
   sku_reference?: string | null; // Reference SKU for external SKUs
   is_active: boolean;            // Whether the SKU is currently active
+  is_approved?: number | boolean; // Approval status (0/false = not approved, 1/true = approved)
   created_by?: string | null;    // User who created the SKU
   created_date: string;          // Date when SKU was created
   period: string;                // Period/Year for the SKU (e.g., "2024")
@@ -251,38 +252,7 @@ const CmSkuDetail: React.FC = () => {
   const [selectedMaterialType, setSelectedMaterialType] = useState<string>('packaging');   // Material type filter (default: packaging)
   const [activeTab, setActiveTab] = useState<'active' | 'inactive'>('active');            // Current tab (Active/Inactive SKUs)
 
-  // State for component editing modal
-  const [showEditComponentModal, setShowEditComponentModal] = useState(false);
-  const [editingComponent, setEditingComponent] = useState<any>(null);
-  const [editComponentData, setEditComponentData] = useState<AddComponentData>({
-    componentType: '',
-    componentCode: '',
-    componentDescription: '',
-    validityFrom: '',
-    validityTo: '',
-    componentCategory: '',
-    componentQuantity: '',
-    componentUnitOfMeasure: '',
-    componentBaseQuantity: '',
-    componentBaseUnitOfMeasure: '',
-    wW: '',
-    componentPackagingType: '',
-    componentPackagingMaterial: '',
-    componentUnitWeight: '',
-    componentWeightUnitOfMeasure: '',
-    percentPostConsumer: '',
-    percentPostIndustrial: '',
-    percentChemical: '',
-    percentBioSourced: '',
-    materialStructure: '',
-    packagingColour: '',
-    packagingLevel: '',
-    componentDimensions: '',
-    packagingEvidence: [],
-    period: ''
-  });
-  const [editComponentErrors, setEditComponentErrors] = useState<Record<string, string>>({});
-  const [editComponentSuccess, setEditComponentSuccess] = useState('');
+
 
   // State for applied filters
   const [appliedFilters, setAppliedFilters] = useState<{ years: string[]; skuDescriptions: string[]; componentCodes: string[] }>({ years: [], skuDescriptions: [], componentCodes: [] });
@@ -673,18 +643,22 @@ const CmSkuDetail: React.FC = () => {
   const [years, setYears] = useState<Array<{id: string, period: string}>>([]);
   const [selectedYears, setSelectedYears] = useState<string[]>([]);
 
-  // Update editComponentData period when selectedYears changes
-  useEffect(() => {
-    setEditComponentData(prev => ({
-      ...prev,
-      period: selectedYears.length > 0 ? getPeriodTextFromId(selectedYears[0]) : ''
-    }));
-  }, [selectedYears, years]);
+
 
   // Helper function to get period text from selected year ID
   const getPeriodTextFromId = (yearId: string) => {
     const yearOption = years.find(year => year.id === yearId);
     return yearOption ? yearOption.period : '';
+  };
+
+  // Helper function to get SKU panel background color based on approval status
+  const getSkuPanelBackgroundColor = (isApproved: number | boolean | undefined) => {
+    // Check if not approved (0, false, undefined) - keep original black for approved (1, true)
+    if (isApproved === 0 || isApproved === false) {
+      return '#721c24'; // Dark red for not approved SKUs
+    } else {
+      return '#000'; // Keep original black color for approved SKUs (1, true) and undefined
+    }
   };
 
   // Update addComponentData period when selectedYears changes
@@ -859,6 +833,8 @@ const CmSkuDetail: React.FC = () => {
     }
   }, [showSkuModal]);
 
+
+
   // Component codes with dummy data
   const [componentCodes, setComponentCodes] = useState<string[]>([
     'COMP001',
@@ -959,6 +935,39 @@ const CmSkuDetail: React.FC = () => {
     };
 
     fetchMasterData();
+  }, []);
+
+  // Direct master data fetch as primary source
+  useEffect(() => {
+    const fetchDirectMasterData = async () => {
+      try {
+        console.log('Fetching master data directly from /get-masterdata API');
+        const result = await apiGet('/get-masterdata');
+        console.log('Direct master data API response:', result);
+        if (result.success && result.data) {
+          console.log('Direct master data loaded:', result.data);
+          if (result.data.material_types) {
+            console.log('Setting material types from direct API:', result.data.material_types);
+            setMaterialTypes(result.data.material_types);
+          }
+          if (result.data.component_uoms) {
+            setUnitOfMeasureOptions(result.data.component_uoms);
+          }
+          if (result.data.packaging_levels) {
+            setPackagingLevelOptions(result.data.packaging_levels);
+          }
+          if (result.data.packaging_materials) {
+            setPackagingMaterialOptions(result.data.packaging_materials);
+          }
+          if (result.data.component_base_uoms) {
+            setComponentBaseUoms(result.data.component_base_uoms);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching direct master data:', err);
+      }
+    };
+    fetchDirectMasterData();
   }, []);
 
   // Handler to update is_active status using Universal API
@@ -1168,179 +1177,12 @@ const CmSkuDetail: React.FC = () => {
     }
   };
 
-  const handleEditComponent = (component: any) => {
-    setEditingComponent(component);
-    setEditComponentData({
-      componentType: component.material_type_id?.toString() || '',
-      componentCode: component.component_code || '',
-      componentDescription: component.component_description || '',
-      validityFrom: component.component_valid_from || '',
-      validityTo: component.component_valid_to || '',
-      componentCategory: component.component_material_group || '',
-      componentQuantity: component.component_quantity || '',
-      componentUnitOfMeasure: component.component_uom_id?.toString() || '',
-      componentBaseQuantity: component.component_base_quantity || '',
-      componentBaseUnitOfMeasure: component.component_base_uom_id?.toString() || '',
-      wW: component.percent_w_w || '',
-      componentPackagingType: component.component_packaging_type_id?.toString() || '',
-      componentPackagingMaterial: component.component_packaging_material || '',
-      componentUnitWeight: component.component_unit_weight || '',
-      componentWeightUnitOfMeasure: component.weight_unit_measure_id?.toString() || '',
-      percentPostConsumer: component.percent_mechanical_pcr_content || '',
-      percentPostIndustrial: component.percent_mechanical_pir_content || '',
-      percentChemical: component.percent_chemical_recycled_content || '',
-      percentBioSourced: component.percent_bio_sourced || '',
-      materialStructure: component.material_structure_multimaterials || '',
-      packagingColour: component.component_packaging_color_opacity || '',
-      packagingLevel: component.component_packaging_level_id?.toString() || '',
-      componentDimensions: component.component_dimensions || '',
-      packagingEvidence: [],
-      period: selectedYears.length > 0 ? getPeriodTextFromId(selectedYears[0]) : ''
-    });
-    
-    // Reset Packaging Specification Evidence states
-    setEditSelectedCategories([]);
-    setEditSelectedFiles([]);
-    setEditUploadedFiles([]);
-    setEditCategoryError('');
-    
-    setEditComponentErrors({});
-    setEditComponentSuccess('');
-    setShowEditComponentModal(true);
-  };
 
-  // Handler for saving edited component
-  const handleEditComponentSave = async () => {
-    if (!editingComponent) return;
 
-    // Validation for required fields
-    const errors: Record<string, string> = {};
-    if (!editComponentData.componentCode) errors.componentCode = 'A value is required for Component Code';
-    
-    setEditComponentErrors(errors);
-    if (Object.keys(errors).length > 0) {
-      return;
-    }
 
-    try {
-      // Create FormData for file uploads
-      const formData = new FormData();
-      
-      // Add all component data
-      formData.append('component_code', editComponentData.componentCode);
-      formData.append('component_description', editComponentData.componentDescription);
-      formData.append('component_quantity', editComponentData.componentQuantity);
-      formData.append('component_uom_id', editComponentData.componentUnitOfMeasure);
-      formData.append('component_packaging_material', editComponentData.componentPackagingMaterial);
-      formData.append('percent_w_w', editComponentData.wW);
-      formData.append('material_type_id', editComponentData.componentType);
-      formData.append('component_valid_from', editComponentData.validityFrom);
-      formData.append('component_valid_to', editComponentData.validityTo);
-      formData.append('component_material_group', editComponentData.componentCategory);
-      formData.append('component_base_quantity', editComponentData.componentBaseQuantity);
-      formData.append('component_base_uom_id', editComponentData.componentBaseUnitOfMeasure);
-      formData.append('component_packaging_type_id', editComponentData.componentPackagingType);
-      formData.append('component_unit_weight', editComponentData.componentUnitWeight);
-      formData.append('weight_unit_measure_id', editComponentData.componentWeightUnitOfMeasure);
-      formData.append('percent_mechanical_pcr_content', editComponentData.percentPostConsumer);
-      formData.append('percent_mechanical_pir_content', editComponentData.percentPostIndustrial);
-      formData.append('percent_chemical_recycled_content', editComponentData.percentChemical);
-      formData.append('percent_bio_sourced', editComponentData.percentBioSourced);
-      formData.append('material_structure_multimaterials', editComponentData.materialStructure);
-      formData.append('component_packaging_color_opacity', editComponentData.packagingColour);
-      formData.append('component_packaging_level_id', editComponentData.packagingLevel);
-      formData.append('component_dimensions', editComponentData.componentDimensions);
 
-      // Add packaging evidence files
-      if (editComponentData.packagingEvidence.length > 0) {
-        editComponentData.packagingEvidence.forEach(file => {
-          formData.append('packaging_evidence', file);
-        });
-      }
 
-      const response = await apiPutFormData(`/component-details/${editingComponent.id}`, formData);
-
-      const result = await response.json();
       
-      if (!response.ok || !result.success) {
-        setEditComponentErrors({ server: result.message || 'Server validation failed' });
-        return;
-      }
-      
-              // Log audit trail for component update
-        try {
-          const auditData = {
-            component_id: editingComponent.id, // ✅ Primary key of the component being edited
-            sku_code: editingComponent.sku_code || selectedSkuCode,
-            component_code: editComponentData.componentCode || editingComponent.component_code || '',
-            component_description: editComponentData.componentDescription || editingComponent.component_description || '',
-            year: editingComponent.year || '',
-            cm_code: cmCode || '',
-            periods: selectedYears.length > 0 ? selectedYears[0] : '',
-            material_type_id: Number(editComponentData.componentType || editingComponent.material_type_id) || 0,
-            component_quantity: Number(editComponentData.componentQuantity || editingComponent.component_quantity) || 0,
-            component_uom_id: Number(editComponentData.componentUnitOfMeasure || editingComponent.component_uom_id) || 0,
-            component_packaging_material: editComponentData.componentPackagingMaterial || editingComponent.component_packaging_material || '',
-            component_unit_weight: Number(editComponentData.componentUnitWeight || editingComponent.component_unit_weight) || 0,
-            weight_unit_measure_id: Number(editComponentData.componentWeightUnitOfMeasure || editingComponent.weight_unit_measure_id) || 0,
-            percent_mechanical_pcr_content: Number(editComponentData.percentPostConsumer || editingComponent.percent_mechanical_pcr_content) || 0,
-            percent_bio_sourced: Number(editComponentData.percentBioSourced || editingComponent.percent_bio_sourced) || 0,
-            user_id: 1,
-            created_by: 1,
-            is_active: editingComponent.is_active || true
-          };
-        
-        await apiPost('/add-component-audit-log', auditData);
-        console.log('Audit log created for component update');
-      } catch (auditError) {
-        console.error('Failed to log audit trail:', auditError);
-      }
-      
-      setEditComponentSuccess('Component updated successfully!');
-      setEditComponentErrors({});
-      
-      // Refresh component details
-      setTimeout(async () => {
-        setShowEditComponentModal(false);
-        setEditingComponent(null);
-        setEditComponentData({
-          componentType: '',
-          componentCode: '',
-          componentDescription: '',
-          validityFrom: '',
-          validityTo: '',
-          componentCategory: '',
-          componentQuantity: '',
-          componentUnitOfMeasure: '',
-          componentBaseQuantity: '',
-          componentBaseUnitOfMeasure: '',
-          wW: '',
-          componentPackagingType: '',
-          componentPackagingMaterial: '',
-          componentUnitWeight: '',
-          componentWeightUnitOfMeasure: '',
-          percentPostConsumer: '',
-          percentPostIndustrial: '',
-          percentChemical: '',
-          percentBioSourced: '',
-          materialStructure: '',
-          packagingColour: '',
-          packagingLevel: '',
-          componentDimensions: '',
-          packagingEvidence: [],
-          period: selectedYears.length > 0 ? getPeriodTextFromId(selectedYears[0]) : ''
-        });
-        setEditComponentSuccess('');
-        // Refresh the component details for the current SKU
-        if (editingComponent?.sku_code) {
-          await fetchComponentDetails(editingComponent.sku_code);
-        }
-      }, 1200);
-      
-    } catch (err) {
-      setEditComponentErrors({ server: 'Network or server error' });
-    }
-  };
 
   // Add state for Add SKU modal fields and validation
   const [addSkuPeriod, setAddSkuPeriod] = useState('');
@@ -1964,7 +1806,8 @@ const CmSkuDetail: React.FC = () => {
             period: addSkuPeriod,
             formulation_reference: addSkuFormulationReference,
             skutype: skutypeBody,  // Only send if checkbox is checked
-            bulk_expert: addSkuDropdownValue  // Add bulk_expert to sku_data as well
+            bulk_expert: addSkuDropdownValue,  // Add bulk_expert to sku_data as well
+            is_approved: 0  // Add is_approved parameter with value 0
           },
           components: filteredComponents.map(component => ({
             component_code: component.component_code,
@@ -2010,7 +1853,8 @@ const CmSkuDetail: React.FC = () => {
           period: addSkuPeriod,
           formulation_reference: addSkuFormulationReference,
           skutype: skutypeBody,
-          bulk_expert: addSkuDropdownValue
+          bulk_expert: addSkuDropdownValue,
+          is_approved: 0
         },
         components: filteredComponents.map(component => ({
           component_code: component.component_code,
@@ -2159,7 +2003,7 @@ const CmSkuDetail: React.FC = () => {
   const [showEditSkuSearchResults, setShowEditSkuSearchResults] = useState(false);
   const [editSkuSearchLoading, setEditSkuSearchLoading] = useState(false);
   const [editSelectedSkuComponents, setEditSelectedSkuComponents] = useState<any[]>([]);
-  const [showEditComponentTable, setShowEditComponentTable] = useState(false);
+
   
   // Edit SKU Reference SKU functionality (similar to Add SKU)
   const [editReferenceSkuOptions, setEditReferenceSkuOptions] = useState<Array<{value: string, label: string}>>([]);
@@ -2177,41 +2021,21 @@ const CmSkuDetail: React.FC = () => {
   
   // Edit modal loading state
   const [editModalLoading, setEditModalLoading] = useState<boolean>(false);
-  
-  // Edit modal component selection state
-  const [editSelectedComponentIds, setEditSelectedComponentIds] = useState<(string | number)[]>([]);
-  
-  // Handle edit modal component selection
-  const handleEditComponentSelect = (componentId: string | number, checked: boolean) => {
-    console.log('🔍 handleEditComponentSelect called:', { componentId, checked, type: typeof componentId });
-    console.log('🔍 Current editSelectedComponentIds:', editSelectedComponentIds);
-    
-    // Use functional update to avoid stale state issues
-    setEditSelectedComponentIds(prevIds => {
-      console.log('🔍 Previous IDs in functional update:', prevIds);
-      console.log('🔍 Component ID being processed:', componentId);
-      
-      let newIds;
-      if (checked) {
-        // Add component if not already selected
-        if (!prevIds.includes(componentId)) {
-          newIds = [...prevIds, componentId];
-          console.log('🔍 Adding component, new selection:', newIds);
-        } else {
-          newIds = prevIds; // Already selected, no change
-          console.log('🔍 Component already selected, no change');
-        }
-      } else {
-        // Remove component if currently selected
-        newIds = prevIds.filter(id => id !== componentId);
-        console.log('🔍 Removing component, new selection:', newIds);
-      }
-      
-      console.log('🔍 Final newIds being returned:', newIds);
-      return newIds;
-    });
+
+  // Handle Edit Component
+  const handleEditComponent = (component: any) => {
+    setEditingComponent(component);
+    setShowEditComponentModal(true);
   };
   
+  // Edit Component modal state
+  const [showEditComponentModal, setShowEditComponentModal] = useState(false);
+  const [editingComponent, setEditingComponent] = useState<any>(null);
+  
+  // Edit Component table state
+  const [showEditComponentTable, setShowEditComponentTable] = useState(false);
+  const [editSelectedComponentIds, setEditSelectedComponentIds] = useState<(string | number)[]>([]);  
+
 
 
   // Edit SKU Reference SKU options fetch function
@@ -2459,7 +2283,8 @@ const CmSkuDetail: React.FC = () => {
       const updateData: any = {
         sku_description: editSkuData.skuDescription,
         formulation_reference: editSkuData.formulationReference,
-        skutype: editSkuData.skuType
+        skutype: editSkuData.skuType,
+        is_approved: 0  // Add is_approved parameter with value 0
       };
 
       // Add reference SKU based on type
@@ -2478,6 +2303,9 @@ const CmSkuDetail: React.FC = () => {
         updateData.components = selectedComponents;
         //console.log('Sending selected component data:', selectedComponents);
       }
+
+      // Log the complete request body being sent
+      console.log('Edit SKU - Full request body being sent:', updateData);
 
       const result = await apiPut(`/sku-details/update/${encodeURIComponent(editSkuData.sku)}`, updateData);
       if (!result.success) {
@@ -2584,6 +2412,39 @@ const CmSkuDetail: React.FC = () => {
   // Add state for Add Component modal fields and validation
   const [addComponentErrors, setAddComponentErrors] = useState<Record<string, string>>({});
   const [addComponentSuccess, setAddComponentSuccess] = useState("");
+
+  // Ensure master data is loaded when Add Component modal opens
+  useEffect(() => {
+    console.log('Add Component modal useEffect triggered:', { showAddComponentModal, materialTypesLength: materialTypes.length });
+    if (showAddComponentModal && materialTypes.length === 0) {
+      console.log('Add Component modal opened, loading master data...');
+      // Try direct master data API first
+      apiGet('/get-masterdata').then(result => {
+        console.log('Master data API response:', result);
+        if (result.success && result.data) {
+          console.log('Master data loaded for Add Component modal:', result.data);
+          if (result.data.material_types) {
+            console.log('Setting material types:', result.data.material_types);
+            setMaterialTypes(result.data.material_types);
+          }
+          if (result.data.component_uoms) {
+            setUnitOfMeasureOptions(result.data.component_uoms);
+          }
+          if (result.data.packaging_levels) {
+            setPackagingLevelOptions(result.data.packaging_levels);
+          }
+          if (result.data.packaging_materials) {
+            setPackagingMaterialOptions(result.data.packaging_materials);
+          }
+          if (result.data.component_base_uoms) {
+            setComponentBaseUoms(result.data.component_base_uoms);
+          }
+        }
+      }).catch(error => {
+        console.error('Failed to load master data for Add Component modal:', error);
+      });
+    }
+  }, [showAddComponentModal]);
   
   // Add state for collapsible section in Add Component modal
   const [showBasicComponentFields, setShowBasicComponentFields] = useState(false);
@@ -2607,11 +2468,9 @@ const CmSkuDetail: React.FC = () => {
   // Add state for CH Pack field
   const [chPackValue, setChPackValue] = useState<string>('');
   
-  // Edit Component Packaging Specification Evidence states
-  const [editSelectedCategories, setEditSelectedCategories] = useState<string[]>([]);
-  const [editSelectedFiles, setEditSelectedFiles] = useState<File[]>([]);
-  const [editUploadedFiles, setEditUploadedFiles] = useState<Array<{id: string, categories: string[], categoryName?: string, files: File[]}>>([]);
-  const [editCategoryError, setEditCategoryError] = useState<string>('');
+
+
+
 
   // History Log Modal states
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
@@ -2800,16 +2659,96 @@ const CmSkuDetail: React.FC = () => {
     }
   };
 
+  // Enhanced function to focus on first field with error and scroll to it
+  const focusOnFirstError = (errors: Record<string, string>) => {
+    const firstErrorField = Object.keys(errors)[0];
+    if (firstErrorField) {
+      console.log('Focusing on first error field:', firstErrorField);
+      
+      // Find the input element with multiple selectors
+      let inputElement = document.querySelector(`[name="${firstErrorField}"]`) as HTMLElement;
+      if (!inputElement) {
+        inputElement = document.querySelector(`[data-field="${firstErrorField}"]`) as HTMLElement;
+      }
+      if (!inputElement) {
+        inputElement = document.querySelector(`#${firstErrorField}`) as HTMLElement;
+      }
+      
+      if (inputElement) {
+        console.log('Found input element, scrolling and focusing:', inputElement);
+        
+        // Scroll to the element with better positioning
+        inputElement.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center',
+          inline: 'nearest'
+        });
+        
+        // Focus on the element after a short delay to ensure scroll is complete
+        setTimeout(() => {
+          inputElement.focus();
+          
+          // For select elements, also open the dropdown
+          if (inputElement.tagName === 'SELECT') {
+            (inputElement as HTMLSelectElement).click();
+          }
+          
+          // For input elements, select the text if it exists
+          if (inputElement.tagName === 'INPUT' && (inputElement as HTMLInputElement).value) {
+            (inputElement as HTMLInputElement).select();
+          }
+        }, 400);
+      } else {
+        console.log('Could not find input element for field:', firstErrorField);
+        // If we can't find the specific field, scroll to the modal body
+        const modalBody = document.querySelector('.modal-body') as HTMLElement;
+        if (modalBody) {
+          modalBody.scrollTop = 0;
+        }
+      }
+    }
+  };
+
   // Add Component handler
   const handleAddComponentSave = async () => {
-    // Validation for required fields
+    // Client-side validation
     const errors: Record<string, string> = {};
-    if (!selectedSkuCode) errors.skuCode = 'A value is required for SKU Code';
-    if (!addComponentData.componentCode) errors.componentCode = 'A value is required for Component Code';
-    if (selectedYears.length === 0) errors.year = 'A value is required for Year';
     
-    setAddComponentErrors(errors);
+    // Component Type validation
+    if (!addComponentData.componentType || addComponentData.componentType.trim() === '') {
+      errors.componentType = 'Please select Component Type';
+    }
+    
+    // Component Code validation
+    if (!addComponentData.componentCode || addComponentData.componentCode.trim() === '') {
+      errors.componentCode = 'Please enter Component Code';
+    }
+    
+    // Component Description validation
+    if (!addComponentData.componentDescription || addComponentData.componentDescription.trim() === '') {
+      errors.componentDescription = 'Please enter Component Description';
+    }
+    
+    // Component validity date - From validation
+    if (!addComponentData.validityFrom || addComponentData.validityFrom.trim() === '') {
+      errors.validityFrom = 'Please select validity start date';
+    }
+    
+    // Component validity date - To validation
+    if (!addComponentData.validityTo || addComponentData.validityTo.trim() === '') {
+      errors.validityTo = 'Please select validity end date';
+    }
+    
+    // Component Unit of Measure validation
+    if (!addComponentData.componentUnitOfMeasure || addComponentData.componentUnitOfMeasure.trim() === '') {
+      errors.componentUnitOfMeasure = 'Please select Component Unit of Measure';
+    }
+    
+    // If there are validation errors, show them and stop
     if (Object.keys(errors).length > 0) {
+      setAddComponentErrors(errors);
+      // Focus on the first error field
+      focusOnFirstError(errors);
       return;
     }
 
@@ -2827,7 +2766,7 @@ const CmSkuDetail: React.FC = () => {
       
       // Debug logging for year and periods
       
-      // ===== OPTIONAL COMPONENT FIELDS =====
+      // ===== COMPONENT FIELDS =====
       formData.append('component_description', addComponentData.componentDescription || '');
       formData.append('formulation_reference', '');
       formData.append('material_type_id', addComponentData.componentType || '');
@@ -2854,6 +2793,8 @@ const CmSkuDetail: React.FC = () => {
       formData.append('component_packaging_color_opacity', addComponentData.packagingColour || '');
       formData.append('component_packaging_level_id', addComponentData.packagingLevel || '');
       formData.append('component_dimensions', addComponentData.componentDimensions || '');
+      
+      // ===== SYSTEM FIELDS =====
       formData.append('packaging_specification_evidence', '');
       formData.append('evidence_of_recycled_or_bio_source', '');
       formData.append('category_entry_id', '');
@@ -2871,34 +2812,26 @@ const CmSkuDetail: React.FC = () => {
       
       // ===== PACKAGING EVIDENCE FILES =====
       if (addComponentData.packagingEvidence.length > 0) {
-        // Option 1: Direct field
         addComponentData.packagingEvidence.forEach(file => {
           formData.append('packaging_evidence', file);
-          console.log('Added packaging evidence file (direct):', file.name);
-        });
-        
-        // Option 2: Separate object structure (if needed)
-        addComponentData.packagingEvidence.forEach(file => {
-          formData.append('Packagingfile[files][]', file);
-          console.log('Added packaging evidence file (object):', file.name);
+          console.log('Added packaging evidence file:', file.name);
         });
       }
-      
-      // Add other optional fields
-      if (addComponentData.componentType) formData.append('material_type_id', addComponentData.componentType);
-      if (addComponentData.validityFrom) formData.append('component_valid_from', addComponentData.validityFrom);
-      if (addComponentData.validityTo) formData.append('component_valid_to', addComponentData.validityTo);
-      if (addComponentData.componentCategory) formData.append('component_material_group', addComponentData.componentCategory);
-      if (addComponentData.componentBaseQuantity) formData.append('component_base_quantity', addComponentData.componentBaseQuantity);
-      if (addComponentData.componentBaseUnitOfMeasure) formData.append('component_base_uom_id', addComponentData.componentBaseUnitOfMeasure);
-      if (addComponentData.componentPackagingType) formData.append('component_packaging_type_id', addComponentData.componentPackagingType);
-      if (addComponentData.componentUnitWeight) formData.append('component_unit_weight', addComponentData.componentUnitWeight);
-      if (addComponentData.componentWeightUnitOfMeasure) formData.append('weight_unit_measure_id', addComponentData.componentWeightUnitOfMeasure);
-      if (addComponentData.percentPostConsumer) formData.append('percent_mechanical_pcr_content', addComponentData.percentPostConsumer);
-      if (addComponentData.percentPostIndustrial) formData.append('percent_mechanical_pir_content', addComponentData.percentPostIndustrial);
-      if (addComponentData.percentChemical) formData.append('percent_chemical_recycled_content', addComponentData.percentChemical);
-      if (addComponentData.percentBioSourced) formData.append('percent_bio_sourced', addComponentData.percentBioSourced);
-      if (addComponentData.materialStructure) formData.append('material_structure_multimaterials', addComponentData.materialStructure);
+
+      // Debug: Log critical form data values
+      console.log('🔍 Form Data Debug - Critical Fields:');
+      console.log('componentType:', addComponentData.componentType);
+      console.log('validityFrom:', addComponentData.validityFrom);
+      console.log('validityTo:', addComponentData.validityTo);
+      console.log('componentUnitOfMeasure:', addComponentData.componentUnitOfMeasure);
+      console.log('componentCode:', addComponentData.componentCode);
+      console.log('componentDescription:', addComponentData.componentDescription);
+
+      // Debug: Log FormData contents before sending
+      console.log('📋 FormData contents before API call:');
+      formData.forEach((value, key) => {
+        console.log(`  ${key}:`, value);
+      });
       if (addComponentData.packagingColour) formData.append('component_packaging_color_opacity', addComponentData.packagingColour);
       if (addComponentData.packagingLevel) formData.append('component_packaging_level_id', addComponentData.packagingLevel);
       if (addComponentData.componentDimensions) formData.append('component_dimensions', addComponentData.componentDimensions);
@@ -2948,11 +2881,9 @@ const CmSkuDetail: React.FC = () => {
         });
       }
 
-      // Debug: Log FormData contents
-     // console.log('FormData contents:');
-      const formDataEntries: [string, FormDataEntryValue][] = [];
+            // Debug: Log FormData contents
+      // console.log('FormData contents:');
       formData.forEach((value, key) => {
-        formDataEntries.push([key, value]);
         //console.log(key, value);
       });
 
@@ -2960,10 +2891,68 @@ const CmSkuDetail: React.FC = () => {
       const response = await apiPostFormData('/add-component', formData);
       
       const result = await response.json();
-      console.log('Result:', result);
+      console.log('🔍 API Response Status:', response.status);
+      console.log('🔍 API Response Result:', result);
+      console.log('🔍 Response OK:', response.ok);
+      console.log('🔍 Result Success:', result.success);
       
-      if (!response.ok || !result.success) {
-        setAddComponentErrors({ ...errors, server: result.message || 'Server validation failed' });
+      // Enhanced error handling with field-specific errors
+      if (!result.success) {
+        console.log('❌ API Validation Error:', result);
+        
+        let errors: Record<string, string> = {};
+        
+        // Handle field-specific validation errors from API
+        if (result.errors && Array.isArray(result.errors)) {
+          console.log('🔍 Processing API validation errors:', result.errors);
+          result.errors.forEach((error: any) => {
+            // Map API field names to form field names
+            let fieldName = error.field;
+            switch (error.field) {
+              case 'material_type_id':
+                fieldName = 'componentType';
+                break;
+              case 'component_code':
+                fieldName = 'componentCode';
+                break;
+              case 'component_description':
+                fieldName = 'componentDescription';
+                break;
+              case 'component_valid_from':
+                fieldName = 'validityFrom';
+                break;
+              case 'component_valid_to':
+                fieldName = 'validityTo';
+                break;
+              case 'component_uom_id':
+                fieldName = 'componentUnitOfMeasure';
+                break;
+              default:
+                fieldName = error.field;
+            }
+            
+            // Use the API message directly - no hardcoded formatting
+            let errorMessage = error.message;
+            
+            console.log(`📝 Mapping error: ${error.field} → ${fieldName}: ${errorMessage}`);
+            errors[fieldName] = errorMessage;
+          });
+        }
+        
+        // If no field-specific errors, show general server error
+        if (Object.keys(errors).length === 0) {
+          errors.server = result.message || 'API request failed';
+        }
+        
+        console.log('🔍 Setting errors in state:', errors);
+        setAddComponentErrors(errors);
+        
+        // Focus on the first error field
+        if (Object.keys(errors).length > 0) {
+          console.log('🔍 Focusing on first error field');
+          focusOnFirstError(errors);
+        }
+        
         return;
       }
       
@@ -3048,7 +3037,16 @@ const CmSkuDetail: React.FC = () => {
       
     } catch (err) {
       console.error('Error:', err);
-      setAddComponentErrors({ ...errors, server: 'Network or server error' });
+      const networkError = { server: 'Network or server error. Please try again.' };
+      setAddComponentErrors(networkError);
+      
+      // Focus on the error message area
+      setTimeout(() => {
+        const errorElement = document.querySelector('[data-field="server"]') as HTMLElement;
+        if (errorElement) {
+          errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
     }
   };
 
@@ -3109,9 +3107,78 @@ const CmSkuDetail: React.FC = () => {
       const componentData = response.data || [];
       const summary = response.summary || {};
       
+      // If no component data from API, try to export SKU data instead
       if (componentData.length === 0) {
-        alert('No component data found to export');
-        return;
+        console.log('⚠️ No component data found in API response, attempting to export SKU data...');
+        
+        // Check if we have SKU data available locally
+        if (filteredSkuData && filteredSkuData.length > 0) {
+          console.log('✅ Found SKU data locally, exporting SKU information instead');
+          
+          // Export SKU data when components are not available
+          const skuExportData = filteredSkuData.map((sku: any) => ({
+            'SKU ID': sku.id || '',
+            'SKU Code': sku.sku_code || '',
+            'SKU Description': sku.sku_description || '',
+            'CM Code': sku.cm_code || '',
+            'CM Description': sku.cm_description || '',
+            'Site': sku.site || '',
+            'SKU Reference': sku.sku_reference || '',
+            'Period': sku.period || '',
+            'Formulation Reference': sku.formulation_reference || '',
+            'Dual Source SKU': sku.dual_source_sku || '',
+            'SKU Type': sku.skutype || '',
+            'Bulk/Expert': sku.bulk_expert || '',
+            'Is Active': sku.is_active ? 'Yes' : 'No',
+            'Is Approved': sku.is_approved === 1 || sku.is_approved === true ? 'Yes' : 'No',
+            'Created By': sku.created_by || '',
+            'Created Date': sku.created_date ? new Date(sku.created_date).toLocaleDateString() : '',
+            'Status': 'SKU Available - No Components'
+          }));
+          
+          // Create worksheet for SKU data
+          const skuWorksheet = XLSX.utils.json_to_sheet(skuExportData);
+          
+          // Style the headers
+          const skuRange = XLSX.utils.decode_range(skuWorksheet['!ref'] || 'A1');
+          for (let col = skuRange.s.c; col <= skuRange.e.c; col++) {
+            const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+            if (skuWorksheet[cellAddress]) {
+              skuWorksheet[cellAddress].s = {
+                font: {
+                  bold: true,
+                  color: { rgb: '30EA03' }
+                },
+                fill: {
+                  fgColor: { rgb: 'E8F5E8' }
+                }
+              };
+            }
+          }
+          
+          // Create workbook and add SKU worksheet
+          const skuWorkbook = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(skuWorkbook, skuWorksheet, 'SKU Data');
+          
+          // Generate filename for SKU export
+          const timestamp = new Date().toISOString().split('T')[0];
+          const skuFilename = `${cmCode}_sku_export_${timestamp}.xlsx`;
+          
+          // Download the SKU file
+          XLSX.writeFile(skuWorkbook, skuFilename);
+          
+          console.log(`✅ SKU Excel export completed: ${skuExportData.length} SKUs exported to ${skuFilename}`);
+          console.log('ℹ️ Note: Components data was not available, exported SKU information instead');
+          
+          // Show user-friendly message
+          alert(`Export completed successfully!\n\n📊 Exported ${skuExportData.length} SKU records to ${skuFilename}\n\nℹ️ Note: Component data was not available, so SKU information was exported instead.`);
+          
+          return; // Exit early since we've exported SKU data
+        } else {
+          // No SKU data either
+          alert('No data found to export. Neither components nor SKU data are available.');
+          return;
+        }
       }
       
       // Prepare data for Excel export
@@ -3906,6 +3973,19 @@ const CmSkuDetail: React.FC = () => {
                   <li style={{ display: 'flex', alignItems: 'center' }}>
                     <button
                       className="btnCommon btnGreen filterButtons"
+                      style={{ minWidth: 110, fontWeight: 600, marginRight: 8, marginTop: 0, fontSize: '13px', padding: '8px 12px' }}
+                      onClick={() => {
+                        // TODO: Implement GAIA functionality
+                        console.log('GAIA button clicked');
+                      }}
+                    >
+                     <span>GAIA</span> 
+                     <i className="ri-global-line" style={{ marginLeft: 5 }}></i>
+                    </button>
+                  </li>
+                  <li style={{ display: 'flex', alignItems: 'center' }}>
+                    <button
+                      className="btnCommon btnGreen filterButtons"
                       style={{ minWidth: 110, fontWeight: 600, marginRight: 0, marginTop: 0, fontSize: '13px', padding: '8px 12px' }}
                       onClick={handleExportToExcel}
                       disabled={exportLoading}
@@ -4051,7 +4131,7 @@ const CmSkuDetail: React.FC = () => {
                 <div key={sku.id} className="panel panel-default" style={{ marginBottom: 10, borderRadius: 6, border: '1px solid #e0e0e0', overflow: 'hidden' }}>
                   <div
                     className="panel-heading panel-title"
-                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', background: '#000', color: '#fff', fontWeight: 600, paddingLeft: 10 }}
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', background: getSkuPanelBackgroundColor(sku.is_approved), color: '#fff', fontWeight: 600, paddingLeft: 10 }}
                     onClick={() => {
                       console.log('🟢 SKU panel clicked:', sku.sku_code);
                       console.log('🟢 Current openIndex:', openIndex, 'Clicked index:', index);
@@ -4078,6 +4158,18 @@ const CmSkuDetail: React.FC = () => {
                       {sku.sku_description && sku.sku_description.trim() !== '' && (
                         <> || {sku.sku_description}</>
                       )}
+                      {/* Approval status indicator */}
+                      <span style={{ 
+                        marginLeft: 8, 
+                        padding: '2px 8px', 
+                        borderRadius: 12, 
+                        fontSize: 10, 
+                        fontWeight: 'bold',
+                        background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#dc3545',
+                        color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#fff'
+                      }}>
+                        {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Pending'}
+                      </span>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
                       <button
@@ -4561,6 +4653,7 @@ const CmSkuDetail: React.FC = () => {
                                               alignItems: 'center',
                                               justifyContent: 'center'
                                             }}
+                                          
                                             onClick={() => handleEditComponent(component)}
                                             title="Edit Component"
                                           >
@@ -4723,7 +4816,7 @@ const CmSkuDetail: React.FC = () => {
                         <div key={sku.id} className="panel panel-default" style={{ marginBottom: 10, borderRadius: 6, border: '1px solid #e0e0e0', overflow: 'hidden' }}>
                           <div
                             className="panel-heading panel-title"
-                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', background: '#000', color: '#fff', fontWeight: 600, paddingLeft: 10 }}
+                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', background: getSkuPanelBackgroundColor(sku.is_approved), color: '#fff', fontWeight: 600, paddingLeft: 10 }}
                             onClick={() => {
                               setOpenIndex(openIndex === index ? null : index);
                               if (openIndex !== index && !componentDetails[sku.sku_code]) {
@@ -4743,6 +4836,18 @@ const CmSkuDetail: React.FC = () => {
                               {sku.sku_description && sku.sku_description.trim() !== '' && (
                                 <> || {sku.sku_description}</>
                               )}
+                              {/* Approval status indicator */}
+                              <span style={{ 
+                                marginLeft: 8, 
+                                padding: '2px 8px', 
+                                borderRadius: 12, 
+                                fontSize: 10, 
+                                fontWeight: 'bold',
+                                background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#dc3545',
+                                color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#fff'
+                              }}>
+                                {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Pending'}
+                              </span>
                             </span>
                             <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
                               <button
@@ -5237,6 +5342,7 @@ const CmSkuDetail: React.FC = () => {
                                                       alignItems: 'center',
                                                       justifyContent: 'center'
                                                     }}
+                                                  
                                                     onClick={() => handleEditComponent(component)}
                                                     title="Edit Component"
                                                   >
@@ -5383,7 +5489,7 @@ const CmSkuDetail: React.FC = () => {
       {/* SKU Modal */}
       {showSkuModal && (
         <div className="modal fade show" style={{ display: 'block', background: 'rgba(0,0,0,0.5)' }} tabIndex={-1}>
-          <div className="modal-dialog modal-xl modal-dialog-scrollable" style={{ maxHeight: '90vh', margin: '2vh auto' }}>
+          <div className="modal-dialog modal-xl modal-dialog-scrollable" style={{ maxHeight: '95vh', margin: '1vh auto' }}>
             <div className="modal-content">
               <div className="modal-header" style={{ backgroundColor: 'rgb(48, 234, 3)', color: '#000', borderBottom: '2px solid #000', alignItems: 'center' }}>
                 <h5 className="modal-title" style={{ color: '#000', fontWeight: 700, flex: 1 }}>Add SKU Details</h5>
@@ -6220,7 +6326,7 @@ const CmSkuDetail: React.FC = () => {
 
       {showEditSkuModal && (
         <div className="modal fade show" style={{ display: 'block', background: 'rgba(0,0,0,0.5)' }} tabIndex={-1}>
-          <div className="modal-dialog modal-xl modal-dialog-scrollable" style={{ maxHeight: '90vh', margin: '2vh auto' }}>
+          <div className="modal-dialog modal-xl modal-dialog-scrollable" style={{ maxHeight: '95vh', margin: '1vh auto' }}>
             <div className="modal-content">
               <div className="modal-header" style={{ backgroundColor: 'rgb(48, 234, 3)', color: '#000', borderBottom: '2px solid #000', alignItems: 'center' }}>
                 <h5 className="modal-title" style={{ color: '#000', fontWeight: 700, flex: 1 }}>Edit SKU Details</h5>
@@ -6878,8 +6984,7 @@ const CmSkuDetail: React.FC = () => {
                                               <td style={{ padding: '4px 6px', fontSize: '9px', textAlign: 'center' }}>
                                                 <input
                                                   type="checkbox"
-                                                  checked={isSelected}
-                                                  onChange={(e) => handleEditComponentSelect(uniqueId, e.target.checked)}
+                                                  checked={isSelected} 
                                                   style={{ cursor: 'pointer' }}
                                                 />
                                               </td>
@@ -7086,11 +7191,12 @@ const CmSkuDetail: React.FC = () => {
 
       {showAddComponentModal && (
         <div className="modal fade show" style={{ display: 'block', background: 'rgba(0,0,0,0.6)' }} tabIndex={-1}>
-          <div className="modal-dialog modal-xl modal-dialog-scrollable" style={{ maxHeight: '90vh', margin: '2vh auto' }}>
+          <div className="modal-dialog modal-xl" style={{ maxWidth: '90vw', margin: '2vh auto' }}>
             <div className="modal-content" style={{ 
               borderRadius: '12px', 
               border: 'none',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
+              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+              maxHeight: '90vh'
             }}>
               <div className="modal-header" style={{ 
                 backgroundColor: '#30ea03', 
@@ -7115,6 +7221,8 @@ const CmSkuDetail: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setShowAddComponentModal(false);
+                      setAddComponentErrors({}); // Clear any previous errors
+                      setAddComponentSuccess(''); // Clear success message
                       setShowBasicComponentFields(false); // Reset collapsible section to collapsed
                       setShowAdvancedComponentFields(false); // Reset second collapsible section to collapsed
                       setShowRecyclingComponentFields(false); // Reset third collapsible section to collapsed
@@ -7145,7 +7253,9 @@ const CmSkuDetail: React.FC = () => {
               </div>
               <div className="modal-body" style={{ 
                 background: '#fff',
-                padding: '30px'
+                padding: '30px',
+                maxHeight: 'calc(90vh - 120px)',
+                overflowY: 'auto'
               }}>
                 <div className="container-fluid" style={{ padding: 0 }}>
                   {/* Mandatory fields note */}
@@ -7161,8 +7271,56 @@ const CmSkuDetail: React.FC = () => {
                     <i className="ri-information-line" style={{ marginRight: 8, color: '#30ea03' }} />
                     <strong>Note:</strong> Fields marked with <span style={{ color: 'red', fontWeight: 'bold' }}>*</span> are mandatory.
                   </div>
+
+
+
+                  {/* Success Message Display */}
+                  {addComponentSuccess && (
+                    <div style={{ 
+                      background: '#d4edda', 
+                      padding: '16px 20px', 
+                      borderRadius: '8px', 
+                      marginBottom: '20px',
+                      border: '1px solid #c3e6cb',
+                      fontSize: '14px',
+                      color: '#155724'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center',
+                        fontWeight: '600'
+                      }}>
+                        <i className="ri-check-line" style={{ marginRight: '8px', fontSize: '16px' }} />
+                        {addComponentSuccess}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* General Error Display */}
+                  {addComponentErrors.server && (
+                    <div style={{ 
+                      background: '#f8d7da', 
+                      padding: '16px 20px', 
+                      borderRadius: '8px', 
+                      marginBottom: '20px',
+                      border: '1px solid #f5c6cb',
+                      fontSize: '14px',
+                      color: '#721c24'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center',
+                        fontWeight: '600'
+                      }}>
+                        <i className="ri-error-warning-line" style={{ marginRight: '8px', fontSize: '16px' }} />
+                        {addComponentErrors.server}
+                      </div>
+                    </div>
+                  )}
+
+
                   <div className="row g-4">
-                    {/* Basic Component Fields - Collapsible Section */}
+                    {/* Basic Component Fields - Simple Section */}
                     <div className="col-12">
                       <div style={{
                         border: '1px solid #e9ecef',
@@ -7170,53 +7328,9 @@ const CmSkuDetail: React.FC = () => {
                         marginBottom: '20px',
                         overflow: 'hidden'
                       }}>
-                        {/* Collapsible Header */}
-                        <div 
-                          style={{
-                            backgroundColor: '#000',
-                            padding: '15px 20px',
-                            cursor: 'pointer',
-                            borderBottom: showBasicComponentFields ? '1px solid #e9ecef' : 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            transition: 'background-color 0.2s ease',
-                            borderRadius: '4px'
-                          }}
-                          onClick={() => setShowBasicComponentFields(!showBasicComponentFields)}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#333'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#000'}
-                        >
-                          <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '12px',
-                            color: '#fff',
-                            fontWeight: '500',
-                            fontSize: '14px'
-                          }}>
-                            <div style={{
-                              width: '20px',
-                              height: '20px',
-                              borderRadius: '50%',
-                              border: '1px solid #fff',
-                              backgroundColor: 'transparent',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '12px',
-                              color: '#fff'
-                            }}>
-                              {showBasicComponentFields ? '−' : '+'}
-                            </div>
-                            Basic Component Information
-                          </div>
-                        </div>
-                        
-                        {/* Collapsible Content */}
-                        {showBasicComponentFields && (
-                          <div style={{ padding: '20px' }}>
-                            <div className="row g-4">
+                        {/* Section Content */}
+                        <div style={{ padding: '20px' }}>
+                          <div className="row g-4">
                               {/* Component Type (Drop-down list) */}
                     <div className="col-md-6">
                       <label style={{ 
@@ -7248,9 +7362,17 @@ const CmSkuDetail: React.FC = () => {
                         </span>
                       </label>
                       <select
-                        className="form-control select-with-icon"
+                        className={`form-control select-with-icon${addComponentErrors.componentType ? ' is-invalid' : ''}`}
+                        name="componentType"
+                        data-field="componentType"
                         value={addComponentData.componentType}
-                        onChange={e => setAddComponentData({ ...addComponentData, componentType: e.target.value })}
+                        onChange={e => {
+                          setAddComponentData({ ...addComponentData, componentType: e.target.value });
+                          // Clear error when user starts typing
+                          if (addComponentErrors.componentType) {
+                            setAddComponentErrors(prev => ({ ...prev, componentType: '' }));
+                          }
+                        }}
                         style={{
                           padding: '12px 16px',
                           border: '1px solid #ddd',
@@ -7260,10 +7382,14 @@ const CmSkuDetail: React.FC = () => {
                           transition: 'border-color 0.3s ease'
                         }}
                       >
-                        <option value="">Select Type</option>
-                        {materialTypeOptions.map(opt => (
-                          <option key={opt.id} value={opt.id}>{opt.item_name}</option>
-                        ))}
+                        <option value="">Select Component Type</option>
+                        {materialTypes.length > 0 ? (
+                          materialTypes.map(opt => (
+                            <option key={opt.id} value={opt.id}>{opt.item_name}</option>
+                          ))
+                        ) : (
+                          <option value="" disabled>Loading material types...</option>
+                        )}
                       </select>
                       {addComponentErrors.componentType && <div style={{ color: 'red', fontSize: 13, marginTop: '4px' }}>{addComponentErrors.componentType}</div>}
                     </div>
@@ -7293,10 +7419,16 @@ const CmSkuDetail: React.FC = () => {
                       </label>
                       <input 
                         type="text" 
-                        className="form-control" 
+                        className={`form-control${addComponentErrors.componentCode ? ' is-invalid' : ''}`}
+                        name="componentCode"
+                        data-field="componentCode"
                         value={addComponentData.componentCode} 
                         onChange={e => {
                           setAddComponentData({ ...addComponentData, componentCode: e.target.value });
+                          // Clear error when user starts typing
+                          if (addComponentErrors.componentCode) {
+                            setAddComponentErrors(prev => ({ ...prev, componentCode: '' }));
+                          }
                           // Show suggestions while typing
                           if (e.target.value.trim() !== '') {
                             fetchComponentDataByCode(e.target.value);
@@ -7376,63 +7508,23 @@ const CmSkuDetail: React.FC = () => {
                           <i className="ri-information-line"></i>
                         </span>
                       </label>
-                      <input type="text" className="form-control" value={addComponentData.componentDescription} onChange={e => setAddComponentData({ ...addComponentData, componentDescription: e.target.value })} />
+                      <input 
+                        type="text" 
+                        className={`form-control${addComponentErrors.componentDescription ? ' is-invalid' : ''}`}
+                        name="componentDescription"
+                        data-field="componentDescription"
+                        value={addComponentData.componentDescription} 
+                        onChange={e => {
+                          setAddComponentData({ ...addComponentData, componentDescription: e.target.value });
+                          // Clear error when user starts typing
+                          if (addComponentErrors.componentDescription) {
+                            setAddComponentErrors(prev => ({ ...prev, componentDescription: '' }));
+                          }
+                        }} 
+                      />
                       {addComponentErrors.componentDescription && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.componentDescription}</div>}
                     </div>
-                    {/* Component validity date - From (Date) */}
-                    <div className="col-md-6">
-                      <label>
-                        Component validity date - From
-                        <span 
-                          style={{ 
-                            marginLeft: '8px', 
-                            cursor: 'pointer', 
-                            color: '#888',
-                            fontSize: '16px',
-                            transition: 'color 0.2s ease'
-                          }} 
-                          onMouseEnter={(e) => {
-                            showTooltip("Select the start date for this component's validity", e);
-                            e.currentTarget.style.color = '#30ea03';
-                          }}
-                          onMouseLeave={(e) => {
-                            hideTooltip();
-                            e.currentTarget.style.color = '#888';
-                          }}
-                        >
-                          <i className="ri-information-line"></i>
-                        </span>
-                      </label>
-                      <input type="date" className="form-control" value={addComponentData.validityFrom} onChange={e => setAddComponentData({ ...addComponentData, validityFrom: e.target.value })} />
-                      {addComponentErrors.validityFrom && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.validityFrom}</div>}
-                    </div>
-                    {/* Component validity date - To (Date) */}
-                    <div className="col-md-6">
-                      <label>
-                        Component validity date - To
-                        <span 
-                          style={{ 
-                            marginLeft: '8px', 
-                            cursor: 'pointer', 
-                            color: '#888',
-                            fontSize: '16px',
-                            transition: 'color 0.2s ease'
-                          }} 
-                          onMouseEnter={(e) => {
-                            showTooltip("Select the end date for this component's validity", e);
-                            e.currentTarget.style.color = '#30ea03';
-                          }}
-                          onMouseLeave={(e) => {
-                            hideTooltip();
-                            e.currentTarget.style.color = '#888';
-                          }}
-                        >
-                          <i className="ri-information-line"></i>
-                        </span>
-                      </label>
-                      <input type="date" className="form-control" value={addComponentData.validityTo} onChange={e => setAddComponentData({ ...addComponentData, validityTo: e.target.value })} />
-                      {addComponentErrors.validityTo && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.validityTo}</div>}
-                    </div>
+
                     {/* Component Category (Input field) */}
                     <div className="col-md-6">
                       <label>
@@ -7466,33 +7558,7 @@ const CmSkuDetail: React.FC = () => {
                       />
                       {addComponentErrors.componentCategory && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.componentCategory}</div>}
                     </div>
-                    {/* Component Quantity (Numeric) */}
-                    <div className="col-md-6">
-                      <label>
-                        Component Quantity <span style={{ color: 'red' }}>*</span>
-                        <span 
-                          style={{ 
-                            marginLeft: '8px', 
-                            cursor: 'pointer', 
-                            color: '#888',
-                            fontSize: '16px',
-                            transition: 'color 0.2s ease'
-                          }} 
-                          onMouseEnter={(e) => {
-                            showTooltip("Enter the quantity of this component used", e);
-                            e.currentTarget.style.color = '#30ea03';
-                          }}
-                          onMouseLeave={(e) => {
-                            hideTooltip();
-                            e.currentTarget.style.color = '#888';
-                          }}
-                        >
-                          <i className="ri-information-line"></i>
-                        </span>
-                      </label>
-                      <input type="number" className="form-control" value={addComponentData.componentQuantity} onChange={e => setAddComponentData({ ...addComponentData, componentQuantity: e.target.value })} />
-                      {addComponentErrors.componentQuantity && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.componentQuantity}</div>}
-                    </div>
+
                     {/* Component Unit of Measure (Drop-down list) */}
                     <div className="col-md-6">
                       <label>
@@ -7518,9 +7584,17 @@ const CmSkuDetail: React.FC = () => {
                         </span>
                       </label>
                       <select
-                        className="form-control select-with-icon"
+                        className={`form-control select-with-icon${addComponentErrors.componentUnitOfMeasure ? ' is-invalid' : ''}`}
+                        name="componentUnitOfMeasure"
+                        data-field="componentUnitOfMeasure"
                         value={addComponentData.componentUnitOfMeasure}
-                        onChange={e => setAddComponentData({ ...addComponentData, componentUnitOfMeasure: e.target.value })}
+                        onChange={e => {
+                          setAddComponentData({ ...addComponentData, componentUnitOfMeasure: e.target.value });
+                          // Clear error when user selects an option
+                          if (addComponentErrors.componentUnitOfMeasure) {
+                            setAddComponentErrors(prev => ({ ...prev, componentUnitOfMeasure: '' }));
+                          }
+                        }}
                       >
                         <option value="">Select UoM</option>
                         {unitOfMeasureOptions.map(opt => (
@@ -7529,10 +7603,83 @@ const CmSkuDetail: React.FC = () => {
                       </select>
                       {addComponentErrors.componentUnitOfMeasure && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.componentUnitOfMeasure}</div>}
                     </div>
+                    
+                    {/* Component Base Quantity (Numeric) */}
+                    <div className="col-md-6">
+                      <label>
+                        Component Base Quantity
+                        <span 
+                          style={{ 
+                            marginLeft: '8px', 
+                            cursor: 'pointer', 
+                            color: '#888',
+                            fontSize: '16px',
+                            transition: 'color 0.2s ease'
+                          }} 
+                          onMouseEnter={(e) => {
+                            showTooltip("Enter the base quantity for this component (reference amount)", e);
+                            e.currentTarget.style.color = '#30ea03';
+                          }}
+                          onMouseLeave={(e) => {
+                            hideTooltip();
+                            e.currentTarget.style.color = '#888';
+                          }}
+                        >
+                          <i className="ri-information-line"></i>
+                        </span>
+                      </label>
+                      <input 
+                        type="number" 
+                        className="form-control" 
+                        name="componentBaseQuantity"
+                        data-field="componentBaseQuantity"
+                        value={addComponentData.componentBaseQuantity} 
+                        onChange={e => setAddComponentData({ ...addComponentData, componentBaseQuantity: e.target.value })} 
+                      />
+                      {addComponentErrors.componentBaseQuantity && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.componentBaseQuantity}</div>}
+                    </div>
+                    
+                    {/* Component Base Unit of Measure */}
+                    <div className="col-md-6">
+                      <label>
+                        Component Base Unit of Measure
+                        <span 
+                          style={{ 
+                            marginLeft: '8px', 
+                            cursor: 'pointer', 
+                            color: '#888',
+                            fontSize: '16px',
+                            transition: 'color 0.2s ease'
+                          }} 
+                          onMouseEnter={(e) => {
+                            showTooltip("Specify the unit for the base quantity (e.g., Each, PCS)", e);
+                            e.currentTarget.style.color = '#30ea03';
+                          }}
+                          onMouseLeave={(e) => {
+                            hideTooltip();
+                            e.currentTarget.style.color = '#888';
+                          }}
+                        >
+                          <i className="ri-information-line"></i>
+                        </span>
+                      </label>
+                      <select
+                        className="form-control select-with-icon"
+                        name="componentBaseUnitOfMeasure"
+                        data-field="componentBaseUnitOfMeasure"
+                        value={addComponentData.componentBaseUnitOfMeasure}
+                        onChange={e => setAddComponentData({ ...addComponentData, componentBaseUnitOfMeasure: e.target.value })}
+                      >
+                        <option value="">Select Base Unit of Measure</option>
+                        {componentBaseUoms.map(opt => (
+                          <option key={opt.id} value={opt.id}>{opt.item_name}</option>
+                        ))}
+                      </select>
+                      {addComponentErrors.componentBaseUnitOfMeasure && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.componentBaseUnitOfMeasure}</div>}
+                    </div>
                             </div>
                           </div>
-                        )}
-                      </div>
+                        </div>
                     </div>
                     {/* Advanced Component Fields - Second Collapsible Section */}
                     <div className="col-12">
@@ -7593,45 +7740,9 @@ const CmSkuDetail: React.FC = () => {
                             backgroundColor: '#fff'
                           }}>
                             <div className="row g-4">
-                              {/* Component Base Quantity (Numeric) */}
-                              <div className="col-md-6">
-                                <label>
-                                  Component Base Quantity
-                                  <span 
-                                    style={{ 
-                                      marginLeft: '8px', 
-                                      cursor: 'pointer', 
-                                      color: '#888',
-                                      fontSize: '16px',
-                                      transition: 'color 0.2s ease'
-                                    }} 
-                                    onMouseEnter={(e) => {
-                                      showTooltip("Enter the base quantity for this component (reference amount)", e);
-                                      e.currentTarget.style.color = '#30ea03';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      hideTooltip();
-                                      e.currentTarget.style.color = '#888';
-                                    }}
-                                  >
-                                    <i className="ri-information-line"></i>
-                                  </span>
-                                </label>
-                                <input type="number" className="form-control" value={addComponentData.componentBaseQuantity} onChange={e => setAddComponentData({ ...addComponentData, componentBaseQuantity: e.target.value })} />
-                                {addComponentErrors.componentBaseQuantity && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.componentBaseQuantity}</div>}
-                              </div>
-                              {/* Component Base Unit of Measure (Default to Each) */}
-                              <div className="col-md-6">
-                                <label>Component Base Unit of Measure <InfoIcon info="Specify the unit for the base quantity (e.g., Each, PCS)." /></label>
-                                <input type="text" className="form-control" value={addComponentData.componentBaseUnitOfMeasure} onChange={e => setAddComponentData({ ...addComponentData, componentBaseUnitOfMeasure: e.target.value })} placeholder="Each" />
-                                {addComponentErrors.componentBaseUnitOfMeasure && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.componentBaseUnitOfMeasure}</div>}
-                              </div>
-                              {/* %w/w (Percentage) */}
-                              <div className="col-md-6">
-                                <label>%w/w <InfoIcon info="Enter the percentage by weight/weight for this component." /></label>
-                                <input type="number" className="form-control" value={addComponentData.wW} onChange={e => setAddComponentData({ ...addComponentData, wW: e.target.value })} placeholder="Percentage" />
-                                {addComponentErrors.wW && <div style={{ color: 'red', fontSize: 13 }}>{addComponentErrors.wW}</div>}
-                              </div>
+
+
+
                               {/* Component Packaging Type (Drop-down list) */}
                               <div className="col-md-6">
                                 <label>Component Packaging Type <InfoIcon info="Select the type of packaging for this component." /></label>
@@ -7641,7 +7752,7 @@ const CmSkuDetail: React.FC = () => {
                                   onChange={e => setAddComponentData({ ...addComponentData, componentPackagingType: e.target.value })}
                                 >
                                   <option value="">Select Packaging Type</option>
-                                  {packagingMaterialOptions.map(opt => (
+                                  {packagingLevelOptions.map(opt => (
                                     <option key={opt.id} value={opt.id}>
                                       {opt.item_name}
                                     </option>
@@ -7790,7 +7901,7 @@ const CmSkuDetail: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    {/* Fifth Collapsible Section - Blank/Empty */}
+                    {/* Fifth Section - Simple */}
                     <div className="col-12">
                       <div style={{
                         border: '1px solid #e9ecef',
@@ -7798,55 +7909,13 @@ const CmSkuDetail: React.FC = () => {
                         marginBottom: '20px',
                         overflow: 'hidden'
                       }}>
-                        {/* Collapsible Header */}
-                        <div 
-                          style={{
-                            backgroundColor: '#000',
-                            padding: '15px 20px',
-                            cursor: 'pointer',
-                            borderBottom: showFifthCollapsibleFields ? '1px solid #e9ecef' : 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            transition: 'background-color 0.2s ease',
-                            borderRadius: '4px'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#333'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#000'}
-                          onClick={() => setShowFifthCollapsibleFields(!showFifthCollapsibleFields)}
-                        >
-                          <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '12px',
-                            color: '#fff',
-                            fontWeight: '500',
-                            fontSize: '14px'
-                          }}>
-                            <div style={{
-                              width: '20px',
-                              height: '20px',
-                              borderRadius: '50%',
-                              border: '1px solid #fff',
-                              backgroundColor: 'transparent',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '12px',
-                              color: '#fff'
-                            }}>
-                              {showFifthCollapsibleFields ? '−' : '+'}
-                            </div>
-                            Fifth Collapsible Section
-                          </div>
-                        </div>
-                        
-                        {/* Collapsible Content */}
-                        {showFifthCollapsibleFields && (
-                          <div style={{
-                            padding: '20px',
-                            backgroundColor: '#fff'
-                          }}>
-                            <div className="row g-4">
+                        {/* Section Content */}
+                        <div style={{
+                          padding: '40px',
+                          backgroundColor: '#fff',
+                          minHeight: '400px'
+                        }}>
+                          <div className="row g-5">
                               {/* CH Pack Input Field */}
                               <div className="col-md-6">
                                 <label style={{ 
@@ -8061,8 +8130,7 @@ const CmSkuDetail: React.FC = () => {
                               </div>
                             </div>
                           </div>
-                        )}
-                      </div>
+                        </div>
                     </div>
 
                     
@@ -8191,40 +8259,124 @@ const CmSkuDetail: React.FC = () => {
                   </div>
                 </div>
               )}
-              
+              {/* Validity Date Fields - Above Save Button */}
+              <div className="row" style={{ marginTop: '24px', marginBottom: '20px' }}>
+                <div className="col-12">
+                  <div style={{
+                    border: '1px solid #e9ecef',
+                    borderRadius: '8px',
+                    padding: '20px',
+                    backgroundColor: '#f8f9fa'
+                  }}>
 
+                  </div>
+                </div>
+              </div>
 
               <div className="modal-footer" style={{ 
                 background: '#fff', 
                 borderTop: '2px solid #000', 
                 display: 'flex', 
-                justifyContent: 'flex-end',
-                padding: '20px 30px',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '15px 25px',
                 borderRadius: '0 0 12px 12px'
               }}>
-                                  <button
-                    type="button"
-                    className="btn"
-                    style={{ 
-                      backgroundColor: 'rgb(48, 234, 3)', 
-                      border: 'none', 
-                      color: '#000', 
-                     
-                      fontWeight: 600,
-                      
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}
-                    onClick={handleAddComponentSave}
-                  >
-                   
-                    Save
-                    <i className="ri-save-line" style={{ fontSize: '16px' }} />
-                  </button>
+                {/* Left side - Component validity date fields */}
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                  {/* Component validity date - From */}
+                  <div>
+                    <label style={{ 
+                      fontSize: '12px', 
+                      fontWeight: '600', 
+                      color: '#333',
+                      marginBottom: '4px',
+                      display: 'block'
+                    }}>
+                      Component validity date - From <span style={{ color: 'red' }}>*</span>
+                    </label>
+                    <input 
+                      type="date" 
+                      className={`form-control${addComponentErrors.validityFrom ? ' is-invalid' : ''}`}
+                      name="validityFrom"
+                      data-field="validityFrom"
+                      value={addComponentData.validityFrom} 
+                      onChange={e => {
+                        setAddComponentData({ ...addComponentData, validityFrom: e.target.value });
+                        if (addComponentErrors.validityFrom) {
+                          setAddComponentErrors(prev => ({ ...prev, validityFrom: '' }));
+                        }
+                      }} 
+                      style={{
+                        width: '160px',
+                        padding: '5px 8px',
+                        border: '1px solid #ced4da',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        backgroundColor: '#fff'
+                      }}
+                    />
+                    {addComponentErrors.validityFrom && <div style={{ color: 'red', fontSize: '10px', marginTop: '1px' }}>{addComponentErrors.validityFrom}</div>}
+                  </div>
+
+                  {/* Component validity date - To */}
+                  <div>
+                    <label style={{ 
+                      fontSize: '12px', 
+                      fontWeight: '600', 
+                      color: '#333',
+                      marginBottom: '4px',
+                      display: 'block'
+                    }}>
+                      Component validity date - To <span style={{ color: 'red' }}>*</span>
+                    </label>
+                    <input 
+                      type="date" 
+                      className={`form-control${addComponentErrors.validityTo ? ' is-invalid' : ''}`}
+                      name="validityTo"
+                      data-field="validityTo"
+                      value={addComponentData.validityTo} 
+                      onChange={e => {
+                        setAddComponentData({ ...addComponentData, validityTo: e.target.value });
+                        if (addComponentErrors.validityTo) {
+                          setAddComponentErrors(prev => ({ ...prev, validityTo: '' }));
+                        }
+                      }} 
+                      style={{
+                        width: '160px',
+                        padding: '5px 8px',
+                        border: '1px solid #ced4da',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        backgroundColor: '#fff'
+                      }}
+                    />
+                    {addComponentErrors.validityTo && <div style={{ color: 'red', fontSize: '10px', marginTop: '1px' }}>{addComponentErrors.validityTo}</div>}
+                  </div>
+                </div>
+
+                {/* Right side - Save button */}
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ 
+                    backgroundColor: 'rgb(48, 234, 3)', 
+                    border: 'none', 
+                    color: '#000', 
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '6px 14px'
+                  }}
+                  onClick={handleAddComponentSave}
+                >
+                  Save
+                  <i className="ri-save-line" style={{ fontSize: '14px' }} />
+                </button>
               </div>
             </div>
           </div>
@@ -8306,930 +8458,25 @@ const CmSkuDetail: React.FC = () => {
         onCancel={handleComponentCancelStatusChange}
       />
 
+
+
+
+
+
+
       {/* Edit Component Modal */}
-      {showEditComponentModal && (
-        <div className="modal fade show" style={{ display: 'block', background: 'rgba(0,0,0,0.5)' }} tabIndex={-1}>
-          <div className="modal-dialog modal-xl modal-dialog-scrollable" style={{ maxHeight: '90vh', margin: '2vh auto' }}>
-            <div className="modal-content">
-              <div className="modal-header" style={{ backgroundColor: 'rgb(48, 234, 3)', color: '#000', borderBottom: '2px solid #000', alignItems: 'center' }}>
-                <h5 className="modal-title" style={{ color: '#000', fontWeight: 700, flex: 1 }}>Edit Component Details</h5>
-                <button
-                  type="button"
-                  onClick={() => setShowEditComponentModal(false)}
-                  aria-label="Close"
-                  style={{
-                    background: '#000',
-                    border: 'none',
-                    color: '#fff',
-                    fontSize: 32,
-                    fontWeight: 900,
-                    lineHeight: 1,
-                    cursor: 'pointer',
-                    marginLeft: 8,
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
-                  }}
-                >
-                  &times;
-                </button>
-              </div>
-
-              <div className="modal-body" style={{ padding: '30px', maxHeight: '70vh', overflowY: 'auto' }}>
-                {editComponentSuccess && (
-                  <div style={{ 
-                    padding: '12px 16px', 
-                    backgroundColor: '#d4edda', 
-                    color: '#155724', 
-                    border: '1px solid #c3e6cb', 
-                    borderRadius: '4px', 
-                    marginBottom: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
-                    <i className="ri-check-line" style={{ fontSize: '16px' }} />
-                    {editComponentSuccess}
-                  </div>
-                )}
-
-                {editComponentErrors.server && (
-                  <div style={{ 
-                    padding: '12px 16px', 
-                    backgroundColor: '#f8d7da', 
-                    color: '#721c24', 
-                    border: '1px solid #f5c6cb', 
-                    borderRadius: '4px', 
-                    marginBottom: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
-                    <i className="ri-error-warning-line" style={{ fontSize: '16px' }} />
-                    {editComponentErrors.server}
-                  </div>
-                )}
-
-                <div className="row">
-                  {/* Component Type */}
-                  <div className="col-md-6">
-                    <label>
-                      Component Type
-                      <span 
-                        style={{ 
-                          marginLeft: '8px', 
-                          cursor: 'pointer', 
-                          color: '#888',
-                          fontSize: '16px',
-                          transition: 'color 0.2s ease'
-                        }} 
-                        onMouseEnter={(e) => {
-                          showTooltip("Select the type of component", e);
-                          e.currentTarget.style.color = '#30ea03';
-                        }}
-                        onMouseLeave={(e) => {
-                          hideTooltip();
-                          e.currentTarget.style.color = '#888';
-                        }}
-                      >
-                        <i className="ri-information-line"></i>
-                      </span>
-                    </label>
-                    <select
-                      value={editComponentData.componentType}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentType: e.target.value })}
-                      className="form-control"
-                      disabled
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        backgroundColor: '#f8f9fa',
-                        color: '#6c757d',
-                        cursor: 'not-allowed'
-                      }}
-                    >
-                      <option value="">Select Component Type</option>
-                      {materialTypes.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.item_name}
-                        </option>
-                      ))}
-                    </select>
-                    {editComponentErrors.componentType && (
-                      <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                        {editComponentErrors.componentType}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Component Code */}
-                  <div className="col-md-6">
-                    <label>
-                      Component Code
-                      <span 
-                        style={{ 
-                          marginLeft: '8px', 
-                          cursor: 'pointer', 
-                          color: '#888',
-                          fontSize: '16px',
-                          transition: 'color 0.2s ease'
-                        }} 
-                        onMouseEnter={(e) => {
-                          showTooltip("Enter the unique code for this component", e);
-                          e.currentTarget.style.color = '#30ea03';
-                        }}
-                        onMouseLeave={(e) => {
-                          hideTooltip();
-                          e.currentTarget.style.color = '#888';
-                        }}
-                      >
-                        <i className="ri-information-line"></i>
-                      </span>
-                    </label>
-                    <input
-                      type="text"
-                      value={editComponentData.componentCode}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentCode: e.target.value })}
-                      className="form-control"
-                      disabled
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        backgroundColor: '#f8f9fa',
-                        color: '#6c757d',
-                        cursor: 'not-allowed'
-                      }}
-                    />
-                    {editComponentErrors.componentCode && (
-                      <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                        {editComponentErrors.componentCode}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Component Description */}
-                  <div className="col-md-6">
-                    <label>Component Description <InfoIcon info="Provide a detailed description of the component." /></label>
-                    <input
-                      type="text"
-                      value={editComponentData.componentDescription}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentDescription: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-
-                  {/* Component Category */}
-                  <div className="col-md-6">
-                    <label>Component Category <InfoIcon info="Select the category for this component." /></label>
-                    <input
-                      type="text"
-                      value={editComponentData.componentCategory}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentCategory: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Validity From */}
-                  <div className="col-md-6">
-                    <label>Component validity date - From <InfoIcon info="Start date for component validity." /></label>
-                    <input
-                      type="date"
-                      value={editComponentData.validityFrom}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, validityFrom: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-
-                  {/* Validity To */}
-                  <div className="col-md-6">
-                    <label>Component validity date - To <InfoIcon info="End date for component validity." /></label>
-                    <input
-                      type="date"
-                      value={editComponentData.validityTo}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, validityTo: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Component Quantity */}
-                  <div className="col-md-6">
-                    <label>Component Quantity <InfoIcon info="Enter the quantity of this component." /></label>
-                    <input
-                      type="number"
-                      value={editComponentData.componentQuantity}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentQuantity: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Component Unit of Measure */}
-                  <div className="col-md-6">
-                    <label>Component Unit of Measure <InfoIcon info="Select the unit of measure for this component." /></label>
-                    <select
-                      value={editComponentData.componentUnitOfMeasure}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentUnitOfMeasure: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    >
-                      <option value="">Select Unit of Measure</option>
-                      {unitOfMeasureOptions.map((uom) => (
-                        <option key={uom.id} value={uom.id}>
-                          {uom.item_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Component Base Quantity */}
-                  <div className="col-md-6">
-                    <label>Component Base Quantity <InfoIcon info="Enter the base quantity for this component." /></label>
-                    <input
-                      type="number"
-                      value={editComponentData.componentBaseQuantity}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentBaseQuantity: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Component Base Unit of Measure */}
-                  <div className="col-md-6">
-                    <label>Component Base Unit of Measure <InfoIcon info="Select the base unit of measure." /></label>
-                    <select
-                      value={editComponentData.componentBaseUnitOfMeasure}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentBaseUnitOfMeasure: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    >
-                      <option value="">Select Base Unit of Measure</option>
-                      {unitOfMeasureOptions.map((uom) => (
-                        <option key={uom.id} value={uom.id}>
-                          {uom.item_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* %w/w */}
-                  <div className="col-md-6">
-                    <label>%w/w <InfoIcon info="Enter the weight percentage." /></label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editComponentData.wW}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, wW: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Component Packaging Type */}
-                  <div className="col-md-6">
-                    <label>Component Packaging Type <InfoIcon info="Select the packaging type for this component." /></label>
-                    <select
-                      value={editComponentData.componentPackagingType}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentPackagingType: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    >
-                      <option value="">Select Packaging Type</option>
-                      {packagingMaterialOptions.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.item_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Component Packaging Material */}
-                  <div className="col-md-6">
-                    <label>Component Packaging Material <InfoIcon info="Enter the packaging material used." /></label>
-                    <input
-                      type="text"
-                      value={editComponentData.componentPackagingMaterial}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentPackagingMaterial: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Component Unit Weight */}
-                  <div className="col-md-6">
-                    <label>Component Unit Weight <InfoIcon info="Enter the unit weight of the component." /></label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editComponentData.componentUnitWeight}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentUnitWeight: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-
-                  {/* Component Weight Unit of Measure */}
-                  <div className="col-md-6">
-                    <label>Component Weight Unit of Measure <InfoIcon info="Select the weight unit of measure." /></label>
-                    <select
-                      value={editComponentData.componentWeightUnitOfMeasure}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentWeightUnitOfMeasure: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    >
-                      <option value="">Select Weight Unit of Measure</option>
-                      {unitOfMeasureOptions.map((uom) => (
-                        <option key={uom.id} value={uom.id}>
-                          {uom.item_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* % Post Consumer */}
-                  <div className="col-md-6">
-                    <label>% Post Consumer <InfoIcon info="Enter the percentage of post-consumer recycled content." /></label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editComponentData.percentPostConsumer}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, percentPostConsumer: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-
-                  {/* % Post Industrial */}
-                  <div className="col-md-6">
-                    <label>% Post Industrial <InfoIcon info="Enter the percentage of post-industrial recycled content." /></label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editComponentData.percentPostIndustrial}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, percentPostIndustrial: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* % Chemical */}
-                  <div className="col-md-6">
-                    <label>% Chemical <InfoIcon info="Enter the percentage of chemically recycled content." /></label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editComponentData.percentChemical}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, percentChemical: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-
-                  {/* % Bio Sourced */}
-                  <div className="col-md-6">
-                    <label>% Bio Sourced <InfoIcon info="Enter the percentage of bio-sourced content." /></label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editComponentData.percentBioSourced}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, percentBioSourced: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Material Structure */}
-                  <div className="col-md-6">
-                    <label>Material Structure <InfoIcon info="Enter the material structure details." /></label>
-                    <input
-                      type="text"
-                      value={editComponentData.materialStructure}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, materialStructure: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-
-                  {/* Packaging Colour */}
-                  <div className="col-md-6">
-                    <label>Packaging Colour <InfoIcon info="Enter the packaging color information." /></label>
-                    <input
-                      type="text"
-                      value={editComponentData.packagingColour}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, packagingColour: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Packaging Level */}
-                  <div className="col-md-6">
-                    <label>Packaging Level <InfoIcon info="Select the packaging level." /></label>
-                    <select
-                      value={editComponentData.packagingLevel}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, packagingLevel: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    >
-                      <option value="">Select Packaging Level</option>
-                      {packagingLevelOptions.map((level) => (
-                        <option key={level.id} value={level.id}>
-                          {level.item_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Component Dimensions */}
-                  <div className="col-md-6">
-                    <label>Component dimensions (3D - LxWxH, 2D - LxW) <InfoIcon info="Enter the component dimensions." /></label>
-                    <input
-                      type="text"
-                      value={editComponentData.componentDimensions}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentDimensions: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="row" style={{ marginTop: '20px' }}>
-                  {/* Packaging Evidence */}
-                  <div className="col-md-6">
-                    <label>Packaging Evidence <InfoIcon info="Upload files as evidence for packaging (optional)." /></label>
-                    <input 
-                      type="file" 
-                      multiple
-                      className="form-control" 
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        setEditComponentData({ 
-                          ...editComponentData, 
-                          packagingEvidence: files,
-                          componentDimensions: editComponentData.componentDimensions 
-                        });
-                      }}
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                    {editComponentData.packagingEvidence.length > 0 && (
-                      <div style={{ marginTop: '8px', fontSize: '13px', color: '#666' }}>
-                        Selected files: {editComponentData.packagingEvidence.map(file => file.name).join(', ')}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Component Dimensions */}
-                  <div className="col-md-6">
-                    <label>Component dimensions (3D - LxWxH, 2D - LxW) <InfoIcon info="Enter the component dimensions." /></label>
-                    <input
-                      type="text"
-                      value={editComponentData.componentDimensions}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentDimensions: e.target.value })}
-                      className="form-control"
-                      style={{ 
-                        padding: '8px 12px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Packaging Specification Evidence Section */}
-                <div className="row" style={{ marginTop: '20px' }}>
-                  <div className="col-12">
-                    <div style={{ 
-                      background: '#f8f9fa', 
-                      padding: '24px', 
-                      borderRadius: '8px', 
-                      border: '1px solid #e9ecef',
-                      marginTop: '16px'
-                    }}>
-                      <h6 style={{ 
-                        fontWeight: '600', 
-                        color: '#333', 
-                        marginBottom: '20px',
-                        fontSize: '16px'
-                      }}>
-                        Packaging Specification Evidence
-                      </h6>
-                      
-                      <div className="row">
-                        <div className="col-md-6">
-                          <label style={{ 
-                            fontWeight: '600', 
-                            color: '#333', 
-                            marginBottom: '8px',
-                            display: 'block'
-                          }}>
-                            KPIS for Evidence Mapping<InfoIcon info="Choose one or more categories for file upload." />
-                          </label>
-                          <MultiSelect
-                            options={[
-                              { value: '1', label: 'Weight' },
-                              { value: '2', label: 'Weight UoM' },
-                              { value: '3', label: 'Packaging Type' },
-                              { value: '4', label: 'Material Type' }
-                            ]}
-                            selectedValues={editSelectedCategories}
-                            onSelectionChange={(categories) => {
-                              setEditSelectedCategories(categories);
-                              setEditCategoryError(''); // Clear error when categories change
-                            }}
-                            placeholder="Select Categories..."
-                          />
-                          {editCategoryError && (
-                            <div style={{
-                              color: '#dc3545',
-                              fontSize: '13px',
-                              marginTop: '8px',
-                              padding: '8px 12px',
-                              backgroundColor: '#f8d7da',
-                              border: '1px solid #f5c6cb',
-                              borderRadius: '4px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}>
-                              <i className="ri-error-warning-line" style={{ fontSize: '14px' }} />
-                              {editCategoryError}
-                            </div>
-                          )}
-                        </div>
-                        
-                        <div className="col-md-6">
-                          <label style={{ 
-                            fontWeight: '600', 
-                            color: '#333', 
-                            marginBottom: '8px',
-                            display: 'block'
-                          }}>
-                            Browse Files <InfoIcon info="Select files to upload for the selected categories." />
-                          </label>
-                          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
-                            <input
-                              type="file"
-                              multiple
-                              className="form-control"
-                              onChange={(e) => {
-                                const files = Array.from(e.target.files || []);
-                                setEditSelectedFiles(files);
-                                setEditCategoryError(''); // Clear error when files change
-                              }}
-                              style={{ 
-                                flex: 1,
-                                padding: '10px 12px',
-                                border: '1px solid #ddd',
-                                borderRadius: '6px',
-                                fontSize: '14px'
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className="btn"
-                              style={{
-                                backgroundColor: '#30ea03',
-                                border: 'none',
-                                color: '#000',
-                                fontWeight: '600',
-                                padding: '10px 20px',
-                                borderRadius: '6px',
-                                whiteSpace: 'nowrap',
-                                fontSize: '14px',
-                                cursor: 'pointer'
-                              }}
-                              onClick={() => {
-                                if (editSelectedCategories.length > 0 && editSelectedFiles.length > 0) {
-                                  // Check if any selected categories are already assigned to other files
-                                  const alreadyAssignedCategories = editSelectedCategories.filter(category => 
-                                    editUploadedFiles.some(upload => 
-                                      upload.categories.includes(category)
-                                    )
-                                  );
-
-                                  if (alreadyAssignedCategories.length > 0) {
-                                    const categoryNames = alreadyAssignedCategories.map(cat => `Category ${cat}`).join(', ');
-                                    setEditCategoryError(`${categoryNames} ${alreadyAssignedCategories.length === 1 ? 'is' : 'are'} already assigned to another file. Please remove ${alreadyAssignedCategories.length === 1 ? 'it' : 'them'} from the other file first.`);
-                                    return;
-                                  }
-
-                                  const newUpload = {
-                                    id: Date.now().toString(),
-                                    categories: editSelectedCategories,
-                                    files: editSelectedFiles
-                                  };
-                                  setEditUploadedFiles(prev => [...prev, newUpload]);
-                                  setEditCategoryError(''); // Clear any previous errors
-                                }
-                              }}
-                              disabled={editSelectedCategories.length === 0 || editSelectedFiles.length === 0}
-                            >
-                              <i className="ri-add-line" style={{ marginRight: '6px' }} />
-                              Add
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Display Uploaded Files Table for Edit Modal */}
-                {editUploadedFiles.length > 0 && (
-                  <div className="row" style={{ marginTop: '24px' }}>
-                    <div className="col-12">
-                      <div style={{ 
-                        background: '#fff', 
-                        borderRadius: '8px', 
-                        border: '1px solid #e9ecef',
-                        overflow: 'hidden',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                      }}>
-                        <div style={{ padding: '0 24px 24px 24px' }}>
-                          <div className="table-responsive">
-                            <table style={{ 
-                              width: '100%', 
-                              borderCollapse: 'collapse',
-                              backgroundColor: '#fff'
-                            }}>
-                              <thead>
-                                <tr style={{ backgroundColor: '#000' }}>
-                                  <th style={{ 
-                                    padding: '16px 20px', 
-                                    fontSize: '14px', 
-                                    fontWeight: '600',
-                                    textAlign: 'left',
-                                    borderBottom: '1px solid #e9ecef',
-                                    color: '#fff'
-                                  }}>
-                                    Category
-                                  </th>
-                                  <th style={{ 
-                                    padding: '16px 20px', 
-                                    fontSize: '14px', 
-                                    fontWeight: '600',
-                                    textAlign: 'left',
-                                    borderBottom: '1px solid #e9ecef',
-                                    color: '#fff'
-                                  }}>
-                                    Files
-                                  </th>
-                                  <th style={{ 
-                                    padding: '16px 20px', 
-                                    fontSize: '14px', 
-                                    fontWeight: '600',
-                                    textAlign: 'center',
-                                    borderBottom: '1px solid #e9ecef',
-                                    width: '100px',
-                                    color: '#fff'
-                                  }}>
-                                    Action
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {editUploadedFiles.map((upload, index) => (
-                                  <tr key={upload.id} style={{ 
-                                    backgroundColor: index % 2 === 0 ? '#fff' : '#f8f9fa',
-                                    transition: 'background-color 0.2s ease'
-                                  }}>
-                                    <td style={{ 
-                                      padding: '16px 20px', 
-                                      fontSize: '14px',
-                                      borderBottom: '1px solid #e9ecef',
-                                      color: '#333'
-                                    }}>
-                                      {upload.categoryName || upload.categories.map(cat => {
-                                        // Map category number to category name
-                                        const categoryName = cat === '1' ? 'Weight' : 
-                                                            cat === '2' ? 'Packaging Type' : 
-                                                            cat === '3' ? 'Material' : 
-                                                            cat === '4' ? 'Evidence' : `Category ${cat}`;
-                                        return categoryName;
-                                      }).join(', ')}
-                                    </td>
-                                    <td style={{ 
-                                      padding: '16px 20px', 
-                                      fontSize: '14px',
-                                      borderBottom: '1px solid #e9ecef',
-                                      color: '#333'
-                                    }}>
-                                      {upload.files.map(file => file.name).join(', ')}
-                                    </td>
-                                    <td style={{ 
-                                      padding: '16px 20px', 
-                                      fontSize: '14px',
-                                      borderBottom: '1px solid #e9ecef',
-                                      textAlign: 'center'
-                                    }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditUploadedFiles(prev => prev.filter(item => item.id !== upload.id))}
-                                        style={{
-                                          backgroundColor: '#dc3545',
-                                          color: 'white',
-                                          border: 'none',
-                                          borderRadius: '4px',
-                                          padding: '6px 12px',
-                                          fontSize: '12px',
-                                          cursor: 'pointer'
-                                        }}
-                                      >
-                                        <i className="ri-delete-bin-line" style={{ marginRight: '4px' }} />
-                                        Delete
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="modal-footer" style={{ 
-                background: '#fff', 
-                borderTop: '2px solid #000', 
-                display: 'flex', 
-                justifyContent: 'flex-end',
-                padding: '20px 30px',
-                borderRadius: '0 0 12px 12px'
-              }}>
-                <button
-                  type="button"
-                  className="btn"
-                  style={{ 
-                    backgroundColor: 'rgb(48, 234, 3)', 
-                    border: 'none', 
-                    color: '#000', 
-                    minWidth: 120, 
-                    fontWeight: 600,
-                    padding: '12px 24px',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}
-                  onClick={handleEditComponentSave}
-                >
-                  <i className="ri-save-line" style={{ fontSize: '16px' }} />
-                  Update Component
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <EditComponentModal
+        show={showEditComponentModal}
+        onClose={() => setShowEditComponentModal(false)}
+        component={editingComponent}
+        onSuccess={() => {
+          // Refresh component data after successful edit
+          if (editingComponent) {
+            // You can add refresh logic here
+            console.log('Component updated successfully');
+          }
+        }}
+      />
 
       {/* Enhanced Component History Log Modal */}
       {showHistoryModal && (
@@ -10504,6 +9751,27 @@ const CmSkuDetail: React.FC = () => {
             opacity: 1;
             transform: translateY(0);
           }
+        }
+        
+        /* Ensure Save button is always visible */
+        .modal-footer {
+          position: sticky !important;
+          bottom: 0 !important;
+          background: white !important;
+          z-index: 1000 !important;
+          border-top: 2px solid #000 !important;
+        }
+        
+        /* Make modal content scrollable but keep footer visible */
+        .modal-body {
+          max-height: 70vh !important;
+          overflow-y: auto !important;
+        }
+        
+        /* Ensure modal has proper height */
+        .modal-dialog {
+          max-height: 95vh !important;
+          height: 90vh !important;
         }
       `}</style>
     </Layout>
